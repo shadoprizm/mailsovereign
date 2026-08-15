@@ -14,26 +14,29 @@ export type ProviderRegistration = {
 };
 
 export class ProviderRegistry {
-  private readonly registrations = new Map<ProviderId, ProviderRegistration>();
-  private frozen = false;
+  readonly #registrations = new Map<ProviderId, ProviderRegistration>();
+  #frozen = false;
 
   register(registration: ProviderRegistration): void {
-    if (this.frozen) {
+    if (this.#frozen) {
       throw new ProviderError("PROVIDER_REGISTRY_FROZEN", registration.connection.id);
     }
-    if (this.registrations.has(registration.connection.id)) {
+    if (this.#registrations.has(registration.connection.id)) {
       throw new ProviderError("PROVIDER_ALREADY_REGISTERED", registration.connection.id);
     }
-    this.registrations.set(registration.connection.id, Object.freeze({ ...registration }));
+    this.#registrations.set(registration.connection.id, Object.freeze({ ...registration }));
   }
 
   freeze(): void {
-    this.frozen = true;
+    if (this.#frozen) {
+      return;
+    }
+    this.#frozen = true;
     Object.freeze(this);
   }
 
   get(id: ProviderId): ProviderRegistration {
-    const registration = this.registrations.get(id);
+    const registration = this.#registrations.get(id);
     if (!registration) {
       throw new ProviderError("PROVIDER_NOT_REGISTERED", id);
     }
@@ -41,7 +44,7 @@ export class ProviderRegistry {
   }
 
   connections(): readonly ProviderConnection[] {
-    return [...this.registrations.values()].map((registration) => registration.connection);
+    return [...this.#registrations.values()].map((registration) => registration.connection);
   }
 }
 

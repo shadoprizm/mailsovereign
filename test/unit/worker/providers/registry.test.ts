@@ -73,6 +73,10 @@ describe("provider registry", () => {
   it("freezes the registry instance and registrations at runtime, not only at the type level", () => {
     const registry = createProviderRegistry();
     expect(Object.isFrozen(registry)).toBe(true);
+    expect(() => registry.freeze()).not.toThrowError();
+    expect(
+      (registry as unknown as { registrations?: Map<string, unknown> }).registrations
+    ).toBeUndefined();
     expect(() => {
       (registry as unknown as { frozen: boolean }).frozen = false;
     }).toThrowError();
