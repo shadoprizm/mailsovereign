@@ -45,7 +45,7 @@ describe("cloudflare inbound adapter", () => {
         expect.unreachable(JSON.stringify(recipient));
       } catch (error) {
         expect(error, JSON.stringify(recipient)).toBeInstanceOf(ProviderError);
-        expect((error as ProviderError).code).toBe("PROVIDER_MALFORMED_RESPONSE");
+        expect((error as ProviderError).code).toBe("PROVIDER_MALFORMED_EVENT");
       }
     }
   });

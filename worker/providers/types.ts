@@ -7,21 +7,14 @@ export const providerCapabilities = [
   "send",
   "draft",
   "folders",
-  "labels",
   "search",
   "attachments",
-  "webhooks",
-  "realtime",
   "custom_domains",
   "human_inboxes",
-  "agent_inboxes",
   "smtp",
   "imap",
   "migration_export",
   "migration_import",
-  "delivery_logs",
-  "bounce_events",
-  "suppression_management",
   "idempotent_send"
 ] as const;
 

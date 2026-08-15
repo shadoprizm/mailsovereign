@@ -44,7 +44,7 @@ export async function sendPasswordSetupEmail(
   const transport = getDefaultMailTransport(env);
   await transport.send({
     from: { name: "HQBase", email: sender },
-    to: [input.user.email],
+    to: input.user.email,
     subject,
     text,
     html: passwordEmailHtml({ action, greeting, invitation, url: input.url })

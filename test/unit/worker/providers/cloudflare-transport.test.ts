@@ -101,6 +101,17 @@ describe("cloudflare mail transport adapter", () => {
     });
   });
 
+  it("preserves the caller's original recipient form for single-recipient sends", async () => {
+    send.mockResolvedValue({ messageId: "<sent@example.com>" });
+    await transport.send({ ...minimalEmail, to: "owner@example.com" });
+    expect(send).toHaveBeenCalledWith({
+      from: "sender@example.com",
+      to: "owner@example.com",
+      subject: "Hello",
+      text: "Body"
+    });
+  });
+
   it("fails closed on malformed provider responses", async () => {
     const malformed = [undefined, null, "ok", {}, { messageId: "" }, { messageId: 42 }];
     for (const response of malformed) {

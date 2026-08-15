@@ -8,7 +8,7 @@ export async function toInboundEmailEvent(
 ): Promise<InboundEmailEvent> {
   const envelopeRecipient = typeof message.to === "string" ? message.to.trim() : "";
   if (envelopeRecipient.length === 0) {
-    throw new ProviderError("PROVIDER_MALFORMED_RESPONSE", cloudflareProviderId);
+    throw new ProviderError("PROVIDER_MALFORMED_EVENT", cloudflareProviderId);
   }
   const raw = await new Response(message.raw).arrayBuffer();
   return {

@@ -2,6 +2,8 @@ import type { ProviderConnection } from "./types";
 
 export type OutboundAddress = string | { readonly name: string; readonly email: string };
 
+export type OutboundRecipients = string | readonly string[];
+
 export type OutboundAttachment = {
   readonly filename: string;
   readonly contentType: string;
@@ -13,9 +15,9 @@ export type OutboundAttachment = {
 
 export type OutboundEmail = {
   readonly from: OutboundAddress;
-  readonly to: readonly string[];
-  readonly cc?: readonly string[];
-  readonly bcc?: readonly string[];
+  readonly to: OutboundRecipients;
+  readonly cc?: OutboundRecipients;
+  readonly bcc?: OutboundRecipients;
   readonly subject: string;
   readonly text: string;
   readonly html?: string;

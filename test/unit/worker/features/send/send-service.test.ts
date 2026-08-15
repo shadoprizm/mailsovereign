@@ -273,6 +273,25 @@ describe("send service", () => {
     expect(insertMessage).not.toHaveBeenCalled();
   });
 
+  it("never invokes the provider transport when replying from a disabled mailbox", async () => {
+    vi.mocked(findMailboxForSending).mockResolvedValue({ ...mailbox, isActive: false });
+
+    await expect(
+      replyToMessage(env, {
+        attachmentIds: [],
+        bcc: [],
+        cc: [],
+        from: mailbox.address,
+        messageId: "message-1",
+        text: "Reply",
+        to: ["owner@example.com"]
+      })
+    ).rejects.toMatchObject({ code: "MAILBOX_DISABLED" });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(insertMessage).not.toHaveBeenCalled();
+  });
+
   it("surfaces provider failures as structured provider errors without leaking payloads", async () => {
     send.mockRejectedValue(new Error("cloudflare upstream: apikey=sk-secret-999"));
 

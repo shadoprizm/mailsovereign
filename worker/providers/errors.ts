@@ -8,7 +8,8 @@ export const providerErrorCodes = [
   "PROVIDER_RATE_LIMITED",
   "PROVIDER_UNAVAILABLE",
   "PROVIDER_SEND_REJECTED",
-  "PROVIDER_MALFORMED_RESPONSE"
+  "PROVIDER_MALFORMED_RESPONSE",
+  "PROVIDER_MALFORMED_EVENT"
 ] as const;
 
 export type ProviderErrorCode = (typeof providerErrorCodes)[number];
@@ -23,7 +24,8 @@ const messages: Record<ProviderErrorCode, string> = {
   PROVIDER_RATE_LIMITED: "The mail provider rate limited the request.",
   PROVIDER_UNAVAILABLE: "The mail provider is temporarily unavailable.",
   PROVIDER_SEND_REJECTED: "The mail provider rejected the outbound message.",
-  PROVIDER_MALFORMED_RESPONSE: "The mail provider returned a malformed response."
+  PROVIDER_MALFORMED_RESPONSE: "The mail provider returned a malformed response.",
+  PROVIDER_MALFORMED_EVENT: "The mail provider delivered a malformed inbound event."
 };
 
 const retryableCodes: ReadonlySet<ProviderErrorCode> = new Set([

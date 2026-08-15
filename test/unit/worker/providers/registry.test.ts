@@ -111,11 +111,20 @@ describe("mail transport resolution", () => {
   });
 
   it("reports provider health without contacting the network", () => {
-    const registry = createProviderRegistry();
-    const health = registry.get(providerId("cloudflare")).health(env);
-    expect(health.providerId).toBe("cloudflare");
-    expect(["ok", "degraded", "unavailable"]).toContain(health.status);
-    const missingSender = registry.get(providerId("cloudflare")).health({} as unknown as WorkerEnv);
-    expect(missingSender.status).toBe("unavailable");
+    vi.stubGlobal("fetch", () => {
+      throw new Error("Network access is forbidden in provider abstraction tests.");
+    });
+    try {
+      const registry = createProviderRegistry();
+      const health = registry.get(providerId("cloudflare")).health(env);
+      expect(health.providerId).toBe("cloudflare");
+      expect(["ok", "degraded", "unavailable"]).toContain(health.status);
+      const missingSender = registry
+        .get(providerId("cloudflare"))
+        .health({} as unknown as WorkerEnv);
+      expect(missingSender.status).toBe("unavailable");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

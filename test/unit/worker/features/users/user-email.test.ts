@@ -21,7 +21,7 @@ describe("user onboarding email", () => {
       expect.objectContaining({
         from: { name: "HQBase", email: "support@example.com" },
         subject: "You’ve been invited to HQBase",
-        to: ["person@gmail.com"]
+        to: "person@gmail.com"
       })
     );
     const message = send.mock.calls[0]?.[0] as { html: string; text: string };
