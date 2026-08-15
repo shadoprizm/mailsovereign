@@ -24,11 +24,12 @@ export class ProviderRegistry {
     if (this.registrations.has(registration.connection.id)) {
       throw new ProviderError("PROVIDER_ALREADY_REGISTERED", registration.connection.id);
     }
-    this.registrations.set(registration.connection.id, registration);
+    this.registrations.set(registration.connection.id, Object.freeze({ ...registration }));
   }
 
   freeze(): void {
     this.frozen = true;
+    Object.freeze(this);
   }
 
   get(id: ProviderId): ProviderRegistration {
@@ -61,6 +62,10 @@ export function createProviderRegistry(): ProviderRegistry {
   return registry;
 }
 
+// A single shared, frozen registry backs production transport resolution so
+// the freeze guarantee actually protects the instance requests resolve from.
+const defaultRegistry = createProviderRegistry();
+
 export function getMailTransport(
   registry: ProviderRegistry,
   id: ProviderId,
@@ -75,5 +80,5 @@ export function getMailTransport(
 }
 
 export function getDefaultMailTransport(env: WorkerEnv): MailTransport {
-  return getMailTransport(createProviderRegistry(), cloudflareProviderId, env);
+  return getMailTransport(defaultRegistry, cloudflareProviderId, env);
 }

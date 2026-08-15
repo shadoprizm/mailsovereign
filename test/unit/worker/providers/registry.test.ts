@@ -70,6 +70,19 @@ describe("provider registry", () => {
     expect(registry.connections().map((connection) => connection.id)).toEqual(before);
   });
 
+  it("freezes the registry instance and registrations at runtime, not only at the type level", () => {
+    const registry = createProviderRegistry();
+    expect(Object.isFrozen(registry)).toBe(true);
+    expect(() => {
+      (registry as unknown as { frozen: boolean }).frozen = false;
+    }).toThrowError();
+    const cloudflare = registry.get(providerId("cloudflare"));
+    expect(Object.isFrozen(cloudflare)).toBe(true);
+    expect(() => {
+      (cloudflare as unknown as { createTransport: null }).createTransport = null;
+    }).toThrowError();
+  });
+
   it("registers the Cloudflare provider as the only default", () => {
     const registry = createProviderRegistry();
     const connections = registry.connections();
