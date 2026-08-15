@@ -1,4 +1,25 @@
-export type DnsRecordType = "A" | "AAAA" | "CNAME" | "MX" | "TXT" | "NS" | "SRV" | "CAA";
+export type DnsRecordType =
+  | "A"
+  | "AAAA"
+  | "CAA"
+  | "CERT"
+  | "CNAME"
+  | "DNSKEY"
+  | "DS"
+  | "HTTPS"
+  | "LOC"
+  | "MX"
+  | "NAPTR"
+  | "NS"
+  | "OPENPGPKEY"
+  | "PTR"
+  | "SMIMEA"
+  | "SRV"
+  | "SSHFP"
+  | "SVCB"
+  | "TLSA"
+  | "TXT"
+  | "URI";
 export interface DnsRecord {
   name: string;
   type: DnsRecordType;
@@ -6,6 +27,13 @@ export interface DnsRecord {
   ttl: number;
   priority?: number;
   proxied?: boolean;
+  providerId?: string;
+}
+export interface EmailRoutingRequiredRecord {
+  name: string;
+  type: string;
+  content: string;
+  priority?: number;
 }
 export interface DomainDnsSnapshot {
   id: string;
@@ -22,6 +50,9 @@ export interface DomainDnsSnapshot {
   nameservers: string[];
   records: DnsRecord[] | undefined;
   cloudflareEmailRouting: "enabled" | "disabled" | "unknown";
+  emailRoutingDnsReady?: "ready" | "not_ready" | "unknown";
+  emailRoutingRequiredRecords?: EmailRoutingRequiredRecord[];
+  catchAllRouting?: "enabled" | "disabled" | "unknown";
   rollbackRecordsKnown: boolean;
   sendingStatus: "active" | "inactive" | "unavailable";
 }
