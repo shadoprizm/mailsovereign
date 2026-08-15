@@ -11,6 +11,7 @@ type WorkerEnvOverrides = {
   HQBASE_RELEASE_PUBLIC_KEY?: string;
   HQBASE_INSTALLATION_ID?: string;
   HQBASE_JOBS?: Queue;
+  PROVIDER_CREDENTIAL_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
   VAPID_PUBLIC_KEY?: string;
   VAPID_SUBJECT?: string;

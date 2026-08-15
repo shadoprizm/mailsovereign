@@ -17,6 +17,7 @@ DROP TABLE IF EXISTS installation_identity;
 DROP TABLE IF EXISTS draft_attachments;
 DROP TABLE IF EXISTS drafts;
 DROP TABLE IF EXISTS domain_setup_operations;
+DROP TABLE IF EXISTS provider_connections;
 DROP TABLE IF EXISTS domain_migration_plans;
 DROP TABLE IF EXISTS domain_dns_snapshots;
 DROP TABLE IF EXISTS mailbox_addresses;
