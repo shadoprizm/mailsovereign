@@ -99,7 +99,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.3",
-    "@cloudflare/vitest-pool-workers": "0.18.8",
+    "@cloudflare/vitest-pool-workers": "0.21.3",
     "@playwright/test": "1.61.1",
     "@types/node": "^26.0.1",
     "@types/react": "^19.1.8",
@@ -115,6 +115,6 @@
     "typescript": "^5.8.3",
     "vite": "^7.0.5",
     "vitest": "^4.1.10",
-    "wrangler": "^4.114.0"
+    "wrangler": "^4.123.0"
   }
 }
