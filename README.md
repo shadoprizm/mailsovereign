@@ -1,4 +1,17 @@
-# HQBase
+# Sovereign Mail
+
+Your domains, your mail infrastructure, and governed agents working beside you.
+
+> **Independent fork:** Sovereign Mail is forked from [HQBase](https://github.com/HQBase/hqbase)
+> and is not affiliated with or endorsed by the HQBase project. The code remains licensed under
+> AGPL-3.0-only. Product rebranding and the expanded architecture are in progress.
+
+## Current foundation
+
+The current codebase is the upstream HQBase foundation described below. See [VISION.md](VISION.md)
+for the Sovereign Mail product direction and execution order.
+
+## Upstream foundation
 
 Your team’s email workspace. On your infrastructure.
 
