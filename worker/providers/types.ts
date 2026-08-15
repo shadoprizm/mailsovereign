@@ -1,6 +1,6 @@
 import { ProviderError } from "./errors";
 
-export type ProviderKind = "cloudflare";
+export type ProviderKind = "cloudflare" | "imap-smtp";
 
 export const providerCapabilities = [
   "receive",
