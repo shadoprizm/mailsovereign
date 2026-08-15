@@ -1,5 +1,6 @@
 import type { WorkerEnv } from "../../lib/env";
 import { AppError } from "../../lib/errors";
+import { getDefaultMailTransport } from "../../providers/registry";
 
 type PasswordEmailUser = {
   id: string;
@@ -40,9 +41,10 @@ export async function sendPasswordSetupEmail(
     "This link expires in seven days and can only be used once."
   ].join("\n");
 
-  await env.MAIL_SENDER.send({
+  const transport = getDefaultMailTransport(env);
+  await transport.send({
     from: { name: "HQBase", email: sender },
-    to: input.user.email,
+    to: [input.user.email],
     subject,
     text,
     html: passwordEmailHtml({ action, greeting, invitation, url: input.url })

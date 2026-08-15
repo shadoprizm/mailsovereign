@@ -3,6 +3,9 @@ import { handleMcpRoute } from "./features/mcp/route";
 import { notifyInboundMessage } from "./features/notifications/delivery";
 import { consumeJobs } from "./jobs/consumer";
 import type { WorkerEnv } from "./lib/env";
+import { requireCapability } from "./providers/capabilities";
+import { cloudflareConnection } from "./providers/cloudflare/connection";
+import { toInboundEmailEvent } from "./providers/cloudflare/inbound";
 import { apiRoutes } from "./routes";
 
 export default {
@@ -38,7 +41,8 @@ export default {
     env: WorkerEnv,
     ctx: ExecutionContext
   ): Promise<void> {
-    const stored = await handleInboundEmail(message, env);
+    requireCapability(cloudflareConnection, "receive");
+    const stored = await handleInboundEmail(env, await toInboundEmailEvent(message));
     if (stored.inserted) {
       ctx.waitUntil(
         notifyInboundMessage(env, stored.message).catch(() => {

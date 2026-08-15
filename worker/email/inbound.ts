@@ -1,17 +1,17 @@
 import type { WorkerEnv } from "../lib/env";
+import type { InboundEmailEvent } from "../providers/inbound";
 
 import { parseRawEmail } from "./parse-email";
 import { storeInboundEmail } from "./store-email";
 
 export async function handleInboundEmail(
-  message: ForwardableEmailMessage,
-  env: WorkerEnv
+  env: WorkerEnv,
+  event: InboundEmailEvent
 ): Promise<Awaited<ReturnType<typeof storeInboundEmail>>> {
-  const raw = await new Response(message.raw).arrayBuffer();
-  const parsed = await parseRawEmail(raw);
+  const parsed = await parseRawEmail(event.raw);
   return storeInboundEmail(env.DB, env.MAIL_OBJECTS, {
-    envelopeRecipient: message.to,
-    raw,
+    envelopeRecipient: event.envelopeRecipient,
+    raw: event.raw,
     parsed
   });
 }

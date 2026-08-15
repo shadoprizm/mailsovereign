@@ -33,6 +33,7 @@ import {
 import { createThread, touchThread } from "@worker/features/messages/threading";
 import { replyToMessage, sendNewMessage } from "@worker/features/send/service";
 import type { WorkerEnv } from "@worker/lib/env";
+import { ProviderError } from "@worker/providers/errors";
 
 const mailbox = {
   addresses: [],
@@ -251,5 +252,66 @@ describe("send service", () => {
         r2Key: "mail/logo.png"
       })
     );
+  });
+
+  it("never invokes the provider transport for a disabled mailbox", async () => {
+    vi.mocked(findMailboxForSending).mockResolvedValue({ ...mailbox, isActive: false });
+
+    await expect(
+      sendNewMessage(env, {
+        attachmentIds: [],
+        bcc: [],
+        cc: [],
+        from: mailbox.address,
+        subject: "Hello",
+        text: "Hello",
+        to: ["owner@example.com"]
+      })
+    ).rejects.toMatchObject({ code: "MAILBOX_DISABLED" });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(insertMessage).not.toHaveBeenCalled();
+  });
+
+  it("surfaces provider failures as structured provider errors without leaking payloads", async () => {
+    send.mockRejectedValue(new Error("cloudflare upstream: apikey=sk-secret-999"));
+
+    try {
+      await sendNewMessage(env, {
+        attachmentIds: [],
+        bcc: [],
+        cc: [],
+        from: mailbox.address,
+        subject: "Hello",
+        text: "Hello",
+        to: ["owner@example.com"]
+      });
+      expect.unreachable();
+    } catch (error) {
+      const providerError = error as ProviderError;
+      expect(providerError).toBeInstanceOf(ProviderError);
+      expect(providerError.code).toBe("PROVIDER_SEND_REJECTED");
+      expect(providerError.message).not.toContain("sk-secret-999");
+      expect(providerError.stack ?? "").not.toContain("sk-secret-999");
+    }
+    expect(insertMessage).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the provider returns a malformed send result", async () => {
+    send.mockResolvedValue({});
+
+    await expect(
+      sendNewMessage(env, {
+        attachmentIds: [],
+        bcc: [],
+        cc: [],
+        from: mailbox.address,
+        subject: "Hello",
+        text: "Hello",
+        to: ["owner@example.com"]
+      })
+    ).rejects.toMatchObject({ code: "PROVIDER_MALFORMED_RESPONSE" });
+
+    expect(insertMessage).not.toHaveBeenCalled();
   });
 });
