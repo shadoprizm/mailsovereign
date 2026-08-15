@@ -56,7 +56,7 @@ export async function insertImapSmtpConnection(
   if (input.displayName.trim().length === 0) {
     throw new ProviderError("PROVIDER_CONNECTION_INVALID", input.providerId);
   }
-  const ciphertext = await sealCredentials(key, input.credentials);
+  const ciphertext = await sealCredentials(key, input.credentials, input.providerId);
   const timestamp = nowIso();
   const record: ImapSmtpConnectionRecord = {
     id: newId("pconn"),

@@ -12,6 +12,7 @@ function base64Key(bytes: number): string {
 }
 
 const validSecret = base64Key(32);
+const boundTo = "mxroute-primary";
 
 describe("provider credential sealing", () => {
   beforeEach(() => {
@@ -28,10 +29,11 @@ describe("provider credential sealing", () => {
     const key = await importCredentialKey(validSecret);
     const sealed = await sealCredentials(
       key,
-      new ProviderCredentials("ops@example.com", "s3cret-pass")
+      new ProviderCredentials("ops@example.com", "s3cret-pass"),
+      boundTo
     );
     expect(sealed.startsWith("v1:")).toBe(true);
-    const unsealed = await unsealCredentials(key, sealed);
+    const unsealed = await unsealCredentials(key, sealed, boundTo);
     expect(unsealed.username()).toBe("ops@example.com");
     expect(unsealed.password()).toBe("s3cret-pass");
   });
@@ -40,7 +42,8 @@ describe("provider credential sealing", () => {
     const key = await importCredentialKey(validSecret);
     const sealed = await sealCredentials(
       key,
-      new ProviderCredentials("ops@example.com", "hunter2-plaintext")
+      new ProviderCredentials("ops@example.com", "hunter2-plaintext"),
+      boundTo
     );
     expect(sealed).not.toContain("hunter2-plaintext");
     expect(sealed).not.toContain("ops@example.com");
@@ -50,18 +53,34 @@ describe("provider credential sealing", () => {
   it("uses a fresh nonce for every seal", async () => {
     const key = await importCredentialKey(validSecret);
     const credentials = new ProviderCredentials("ops@example.com", "same-password");
-    const first = await sealCredentials(key, credentials);
-    const second = await sealCredentials(key, credentials);
+    const first = await sealCredentials(key, credentials, boundTo);
+    const second = await sealCredentials(key, credentials, boundTo);
     expect(first).not.toBe(second);
+  });
+
+  it("binds sealed credentials to their owner and refuses transplanted blobs", async () => {
+    const key = await importCredentialKey(validSecret);
+    const sealed = await sealCredentials(
+      key,
+      new ProviderCredentials("ops@example.com", "s3cret"),
+      "mxroute-primary"
+    );
+    await expect(unsealCredentials(key, sealed, "mxroute-secondary")).rejects.toMatchObject({
+      code: "PROVIDER_CREDENTIAL_UNAVAILABLE"
+    });
   });
 
   it("fails closed on tampered ciphertext", async () => {
     const key = await importCredentialKey(validSecret);
-    const sealed = await sealCredentials(key, new ProviderCredentials("ops@example.com", "s3cret"));
+    const sealed = await sealCredentials(
+      key,
+      new ProviderCredentials("ops@example.com", "s3cret"),
+      boundTo
+    );
     const parts = sealed.split(":");
     const body = parts[2] ?? "";
     const tampered = `${parts[0]}:${parts[1]}:${body.slice(0, -2)}${body.endsWith("AA") ? "BB" : "AA"}`;
-    await expect(unsealCredentials(key, tampered)).rejects.toMatchObject({
+    await expect(unsealCredentials(key, tampered, boundTo)).rejects.toMatchObject({
       code: "PROVIDER_CREDENTIAL_UNAVAILABLE"
     });
   });
@@ -71,9 +90,10 @@ describe("provider credential sealing", () => {
     const otherKey = await importCredentialKey(base64Key(32));
     const sealed = await sealCredentials(
       sealKey,
-      new ProviderCredentials("ops@example.com", "s3cret")
+      new ProviderCredentials("ops@example.com", "s3cret"),
+      boundTo
     );
-    await expect(unsealCredentials(otherKey, sealed)).rejects.toMatchObject({
+    await expect(unsealCredentials(otherKey, sealed, boundTo)).rejects.toMatchObject({
       code: "PROVIDER_CREDENTIAL_UNAVAILABLE"
     });
   });
@@ -82,7 +102,10 @@ describe("provider credential sealing", () => {
     const key = await importCredentialKey(validSecret);
     const malformed = ["", "v1", "v1:", "v1:only-two", "v2:aaaa:bbbb", "v1:%%%:%%%", "plaintext"];
     for (const value of malformed) {
-      await expect(unsealCredentials(key, value), JSON.stringify(value)).rejects.toMatchObject({
+      await expect(
+        unsealCredentials(key, value, boundTo),
+        JSON.stringify(value)
+      ).rejects.toMatchObject({
         code: "PROVIDER_CREDENTIAL_UNAVAILABLE"
       });
     }
@@ -101,7 +124,7 @@ describe("provider credential sealing", () => {
   it("does not leak credential material through unseal errors", async () => {
     const key = await importCredentialKey(validSecret);
     try {
-      await unsealCredentials(key, "v1:aGVsbG8=:cGFzc3dvcmQ9aHVudGVyMg==");
+      await unsealCredentials(key, "v1:aGVsbG8=:cGFzc3dvcmQ9aHVudGVyMg==", boundTo);
       expect.unreachable();
     } catch (error) {
       const providerError = error as ProviderError;

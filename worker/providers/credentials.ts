@@ -41,21 +41,29 @@ export async function importCredentialKey(secret: string | undefined): Promise<C
   return crypto.subtle.importKey("raw", bytes, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }
 
+// boundTo is mixed into the GCM additional data so a sealed blob transplanted
+// onto a different connection row can never unseal.
 export async function sealCredentials(
   key: CryptoKey,
-  credentials: ProviderCredentials
+  credentials: ProviderCredentials,
+  boundTo: string
 ): Promise<string> {
   const nonce = crypto.getRandomValues(new Uint8Array(nonceByteLength));
   const payload = new TextEncoder().encode(
     JSON.stringify({ username: credentials.username(), password: credentials.password() })
   );
-  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, key, payload);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: nonce, additionalData: new TextEncoder().encode(boundTo) },
+    key,
+    payload
+  );
   return `${sealFormat}:${encodeBase64(nonce)}:${encodeBase64(new Uint8Array(ciphertext))}`;
 }
 
 export async function unsealCredentials(
   key: CryptoKey,
-  sealed: string
+  sealed: string,
+  boundTo: string
 ): Promise<ProviderCredentials> {
   const parts = sealed.split(":");
   if (parts.length !== 3 || parts[0] !== sealFormat) {
@@ -73,7 +81,11 @@ export async function unsealCredentials(
   }
   let payload: unknown;
   try {
-    const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: nonce }, key, ciphertext);
+    const plaintext = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: nonce, additionalData: new TextEncoder().encode(boundTo) },
+      key,
+      ciphertext
+    );
     payload = JSON.parse(new TextDecoder().decode(plaintext));
   } catch {
     throw new ProviderError("PROVIDER_CREDENTIAL_UNAVAILABLE", null);
