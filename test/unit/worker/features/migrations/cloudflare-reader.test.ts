@@ -1123,6 +1123,7 @@ describe("cloudflare review-driven hardening", () => {
     for (const overrides of [
       { auth: { apiToken: "bad\ntoken" } },
       { auth: { apiToken: `${apiToken} ` } },
+      { auth: { apiToken: "1234567890" } },
       { domain: `${"a".repeat(63)}.`.repeat(4).slice(0, -1) }
     ]) {
       const recorded: RecordedRequest[] = [];

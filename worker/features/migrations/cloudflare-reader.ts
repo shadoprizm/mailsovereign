@@ -42,7 +42,7 @@ function validateInput(input: CaptureCloudflareEvidenceInput): void {
   ) {
     throw new Error("Domain is not a valid DNS name.");
   }
-  if (!/^[A-Za-z0-9._-]{8,256}$/.test(input.auth.apiToken)) {
+  if (!/^(?=.*[A-Za-z])[A-Za-z0-9._-]{8,256}$/.test(input.auth.apiToken)) {
     throw new Error("Cloudflare API token is malformed.");
   }
   const now = parseIsoTime(input.now);
@@ -60,8 +60,11 @@ function validateInput(input: CaptureCloudflareEvidenceInput): void {
  * preserved verbatim before normalization, every failure is represented
  * as blocking evidence, and the snapshot hash is computed with the
  * accepted canonical serialization so integrity is verifiable later.
- * The API token is used only for the authorization header and never
- * appears in snapshots, raw evidence, errors, notes, or logs.
+ * The API token is used only for the authorization header, is never
+ * logged, and is redacted from raw evidence, errors, and notes before
+ * the capture is returned. Normalized snapshot fields are hashed as
+ * captured and are not rewritten: they could only contain the token if
+ * the zone's own DNS data literally embedded it.
  */
 export async function captureCloudflareDomainEvidence(
   input: CaptureCloudflareEvidenceInput
@@ -144,6 +147,33 @@ export async function captureCloudflareDomainEvidence(
     });
   }
 
+  // Provider responses can echo request context, so scrub the exact token
+  // from raw evidence and every message before the capture leaves this
+  // trust boundary. The validated token charset needs no JSON escaping and
+  // always contains a letter, so substring replacement over serialized raw
+  // evidence cannot rewrite JSON structure; if the round-trip still fails
+  // anyway, raw evidence is withheld as blocking evidence rather than thrown.
+  const redact = (text: string): string => text.split(apiToken).join("[redacted]");
+  let redactedRaw: CloudflareRawEvidence = {
+    zoneList: null,
+    dnsRecordPages: [],
+    emailRouting: null,
+    emailRoutingDns: null,
+    catchAll: null,
+    emailSending: null
+  };
+  try {
+    redactedRaw = JSON.parse(redact(JSON.stringify(raw))) as CloudflareRawEvidence;
+  } catch {
+    errors.push({
+      source: "zone",
+      kind: "malformed_response",
+      httpStatus: null,
+      cloudflareCodes: [],
+      message: "Raw evidence could not be redacted and was withheld."
+    });
+  }
+
   const snapshot: DomainDnsSnapshot = {
     id: input.snapshotId,
     status: errors.length === 0 ? "complete" : "incomplete",
@@ -165,14 +195,9 @@ export async function captureCloudflareDomainEvidence(
   };
   snapshot.contentHash = await computeDomainDnsSnapshotHash(snapshot);
 
-  // Provider responses can echo request context, so scrub the exact token
-  // from raw evidence and every message before the capture leaves this
-  // trust boundary. The validated token charset needs no JSON escaping,
-  // making plain substring replacement over serialized raw evidence safe.
-  const redact = (text: string): string => text.split(apiToken).join("[redacted]");
   return {
     snapshot,
-    raw: JSON.parse(redact(JSON.stringify(raw))) as CloudflareRawEvidence,
+    raw: redactedRaw,
     errors: errors.map((error) => ({ ...error, message: redact(error.message) })),
     notes: notes.map((note) => ({ ...note, message: redact(note.message) }))
   };
