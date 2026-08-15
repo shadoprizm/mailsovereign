@@ -1,13 +1,19 @@
 import { z } from "zod";
 
 import type { CloudflareEvidenceError, CloudflareEvidenceNote } from "./cloudflare-evidence";
-import { normalizeDnsName, normalizeNameservers, normalizeZoneStatus } from "./cloudflare-evidence";
+import {
+  canonicalSortRequiredRecords,
+  normalizeDnsName,
+  normalizeNameservers,
+  normalizeZoneStatus,
+  toDnsRecordType
+} from "./cloudflare-evidence";
 import type { ProviderRead } from "./cloudflare-reader-client";
 import { evidenceError } from "./cloudflare-reader-client";
 import type { DomainDnsSnapshot, EmailRoutingRequiredRecord } from "./types";
 
 const zoneSchema = z.object({
-  id: z.string().min(1),
+  id: z.string().regex(/^[0-9a-f]{32}$/),
   name: z.string().min(1),
   status: z.string().min(1),
   name_servers: z
@@ -23,7 +29,7 @@ const routingRequiredRecordSchema = z.object({
   content: z.string().min(1),
   priority: z.number().int().nonnegative().optional()
 });
-const routingDnsMissingSchema = z.object({ errors: z.array(z.unknown()) });
+const routingDnsMissingSchema = z.strictObject({ errors: z.array(z.unknown()).min(1) });
 const catchAllSchema = z.object({ enabled: z.boolean() });
 const sendingSubdomainsSchema = z.array(z.object({ name: z.string(), enabled: z.boolean() }));
 
@@ -44,6 +50,17 @@ export function readZone(
 ): ZoneEvidence | null {
   if (!read.ok) {
     errors.push(read.error);
+    return null;
+  }
+  const info = read.envelope.result_info;
+  if (info && info.total_pages > 1) {
+    errors.push(
+      evidenceError(
+        "zone",
+        "zone_ambiguous",
+        "Cloudflare reported more than one page of zones for the domain."
+      )
+    );
     return null;
   }
   const zones = z.array(z.unknown()).safeParse(read.envelope.result);
@@ -136,17 +153,29 @@ export function readRoutingDns(
     errors.push(read.error);
     return { ready: "unknown", requiredRecords: undefined };
   }
-  const required = z.array(routingRequiredRecordSchema).safeParse(read.envelope.result);
+  const required = z.array(routingRequiredRecordSchema).min(1).safeParse(read.envelope.result);
   if (required.success) {
-    return {
-      ready: "ready",
-      requiredRecords: required.data.map((record) => ({
+    const normalized: EmailRoutingRequiredRecord[] = [];
+    for (const record of required.data) {
+      const recordType = toDnsRecordType(record.type);
+      if (recordType === undefined) {
+        errors.push(
+          evidenceError(
+            "email_routing_dns",
+            "malformed_response",
+            "Email Routing DNS required record has an unrecognized type."
+          )
+        );
+        return { ready: "unknown", requiredRecords: undefined };
+      }
+      normalized.push({
         name: normalizeDnsName(record.name),
-        type: record.type.trim().toUpperCase(),
+        type: recordType,
         content: record.content.trim(),
         ...(record.priority === undefined ? {} : { priority: record.priority })
-      }))
-    };
+      });
+    }
+    return { ready: "ready", requiredRecords: canonicalSortRequiredRecords(normalized) };
   }
   const missing = routingDnsMissingSchema.safeParse(read.envelope.result);
   if (missing.success) {

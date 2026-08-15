@@ -1,15 +1,28 @@
 import { z } from "zod";
 
-import type { DnsRecord, DnsRecordType, DomainDnsSnapshot } from "./types";
+import type {
+  DnsRecord,
+  DnsRecordType,
+  DomainDnsSnapshot,
+  EmailRoutingRequiredRecord
+} from "./types";
 
 /**
  * Fetch shape accepted by the migration reader. The reader only ever
  * constructs GET requests; the literal method type makes a mutation
- * request unrepresentable at the call site.
+ * request unrepresentable at the call site. Redirects are refused so
+ * the authorization header can never follow a Location elsewhere, and
+ * every request carries an abort signal so a stalled connection cannot
+ * hang the capture.
  */
 export type CloudflareReaderFetch = (
   url: string,
-  init: { method: "GET"; headers: Record<string, string> }
+  init: {
+    method: "GET";
+    headers: Record<string, string>;
+    redirect: "error";
+    signal: AbortSignal;
+  }
 ) => Promise<Response>;
 
 export type CloudflareEvidenceSource =
@@ -88,6 +101,12 @@ const PRIORITY_RECORD_TYPES: readonly DnsRecordType[] = ["MX", "SRV", "URI"];
 export const normalizeDnsName = (value: string): string =>
   value.trim().toLowerCase().replace(/\.$/, "");
 
+/** Uppercase and allowlist a provider record type; unknown types stay untrusted. */
+export const toDnsRecordType = (value: string): DnsRecordType | undefined => {
+  const normalized = value.trim().toUpperCase();
+  return DNS_RECORD_TYPES.find((type) => type === normalized);
+};
+
 const providerDnsRecordSchema = z.object({
   id: z.string().min(1),
   type: z.string().min(1),
@@ -113,11 +132,10 @@ export function normalizeProviderDnsRecord(raw: unknown): NormalizedDnsRecordRes
     return { ok: false, reason: "DNS record failed shape validation." };
   }
   const candidate = parsed.data;
-  const type = candidate.type.trim().toUpperCase();
-  if (!DNS_RECORD_TYPES.includes(type as DnsRecordType)) {
+  const recordType = toDnsRecordType(candidate.type);
+  if (recordType === undefined) {
     return { ok: false, reason: "DNS record type is not a recognized Cloudflare type." };
   }
-  const recordType = type as DnsRecordType;
   if (PRIORITY_RECORD_TYPES.includes(recordType) && candidate.priority === undefined) {
     return { ok: false, reason: "Priority-bearing DNS record is missing its priority." };
   }
@@ -136,26 +154,46 @@ export function normalizeProviderDnsRecord(raw: unknown): NormalizedDnsRecordRes
   return { ok: true, record };
 }
 
-const canonicalKey = (record: DnsRecord): string =>
-  [
-    record.name,
-    record.type,
-    record.priority ?? "",
-    normalizeDnsName(record.content),
-    record.ttl,
-    record.proxied ?? "",
-    record.providerId ?? ""
-  ].join("|");
+const compareStrings = (left: string, right: string): number =>
+  left < right ? -1 : left > right ? 1 : 0;
+const compareNumbers = (left: number, right: number): number =>
+  left < right ? -1 : left > right ? 1 : 0;
+const proxiedRank = (value: boolean | undefined): number =>
+  value === undefined ? 0 : value ? 2 : 1;
 
-/** Deterministic canonical order independent of provider response order. */
+/**
+ * Deterministic canonical order independent of provider response order
+ * and default locale. Fields are compared individually (never joined
+ * into one string) so free-text values cannot collide with separator
+ * characters; the provider record id is the final total-order tiebreak.
+ */
 export const canonicalSortDnsRecords = (records: DnsRecord[]): DnsRecord[] =>
   records
     .map((record) => ({ ...record }))
-    .sort((left, right) => {
-      const leftKey = canonicalKey(left);
-      const rightKey = canonicalKey(right);
-      return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
-    });
+    .sort(
+      (left, right) =>
+        compareStrings(left.name, right.name) ||
+        compareStrings(left.type, right.type) ||
+        compareNumbers(left.priority ?? -1, right.priority ?? -1) ||
+        compareStrings(left.content, right.content) ||
+        compareNumbers(left.ttl, right.ttl) ||
+        compareNumbers(proxiedRank(left.proxied), proxiedRank(right.proxied)) ||
+        compareStrings(left.providerId ?? "", right.providerId ?? "")
+    );
+
+/** Canonical order for routing-DNS required records before hashing. */
+export const canonicalSortRequiredRecords = (
+  records: EmailRoutingRequiredRecord[]
+): EmailRoutingRequiredRecord[] =>
+  records
+    .map((record) => ({ ...record }))
+    .sort(
+      (left, right) =>
+        compareStrings(left.name, right.name) ||
+        compareStrings(left.type, right.type) ||
+        compareNumbers(left.priority ?? -1, right.priority ?? -1) ||
+        compareStrings(left.content, right.content)
+    );
 
 const ZONE_STATUSES: ReadonlyArray<DomainDnsSnapshot["zone"]["status"]> = [
   "active",

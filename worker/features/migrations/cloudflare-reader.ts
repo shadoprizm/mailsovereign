@@ -35,14 +35,16 @@ const parseIsoTime = (value: string): number | null => {
 
 function validateInput(input: CaptureCloudflareEvidenceInput): void {
   if (!input.snapshotId.trim()) throw new Error("Snapshot id is required.");
+  const domain = normalizeDnsName(input.domain);
   if (
-    !/^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/.test(
-      normalizeDnsName(input.domain)
-    )
+    domain.length > 253 ||
+    !/^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/.test(domain)
   ) {
     throw new Error("Domain is not a valid DNS name.");
   }
-  if (!input.auth.apiToken.trim()) throw new Error("Cloudflare API token is required.");
+  if (!/^[A-Za-z0-9._-]{8,256}$/.test(input.auth.apiToken)) {
+    throw new Error("Cloudflare API token is malformed.");
+  }
   const now = parseIsoTime(input.now);
   const expires = parseIsoTime(input.expiresAt);
   if (now === null || expires === null || now >= expires) {
@@ -162,5 +164,16 @@ export async function captureCloudflareDomainEvidence(
     sendingStatus: sending
   };
   snapshot.contentHash = await computeDomainDnsSnapshotHash(snapshot);
-  return { snapshot, raw, errors, notes };
+
+  // Provider responses can echo request context, so scrub the exact token
+  // from raw evidence and every message before the capture leaves this
+  // trust boundary. The validated token charset needs no JSON escaping,
+  // making plain substring replacement over serialized raw evidence safe.
+  const redact = (text: string): string => text.split(apiToken).join("[redacted]");
+  return {
+    snapshot,
+    raw: JSON.parse(redact(JSON.stringify(raw))) as CloudflareRawEvidence,
+    errors: errors.map((error) => ({ ...error, message: redact(error.message) })),
+    notes: notes.map((note) => ({ ...note, message: redact(note.message) }))
+  };
 }

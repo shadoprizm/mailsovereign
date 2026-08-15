@@ -26,6 +26,7 @@ export async function readDnsRecords(
 ): Promise<DnsRecordsEvidence> {
   const pages: unknown[] = [];
   const collected: DnsRecord[] = [];
+  const seenProviderIds = new Set<string>();
   let expectedTotalPages: number | null = null;
   let expectedTotalCount: number | null = null;
   let page = 1;
@@ -92,6 +93,18 @@ export async function readDnsRecords(
         errors.push(evidenceError("dns_records", "malformed_response", normalized.reason));
         return { records: undefined, pages };
       }
+      const providerId = normalized.record.providerId ?? "";
+      if (seenProviderIds.has(providerId)) {
+        errors.push(
+          evidenceError(
+            "dns_records",
+            "pagination_incomplete",
+            "Duplicate provider record id indicates the record set shifted while paging."
+          )
+        );
+        return { records: undefined, pages };
+      }
+      seenProviderIds.add(providerId);
       collected.push(normalized.record);
     }
     if (page >= expectedTotalPages) break;

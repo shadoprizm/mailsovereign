@@ -31,7 +31,7 @@ export interface DnsRecord {
 }
 export interface EmailRoutingRequiredRecord {
   name: string;
-  type: string;
+  type: DnsRecordType;
   content: string;
   priority?: number;
 }
@@ -69,6 +69,8 @@ export type ReadinessBlocker =
   | "mx_providers_mixed"
   | "spf_conflicting"
   | "cloudflare_routing_not_enabled"
+  | "email_routing_dns_unknown"
+  | "catch_all_unknown"
   | "rollback_records_unknown";
 export type ReadinessWarning =
   | "dmarc_missing"

@@ -20,6 +20,8 @@ interface RecordedRequest {
   url: string;
   method: string;
   headers: Record<string, string>;
+  redirect: string | undefined;
+  hasAbortSignal: boolean;
 }
 
 type RouteResponder = (url: URL, call: number) => Response;
@@ -173,7 +175,13 @@ function makeFetch(routes: Route[], recorded: RecordedRequest[]): CloudflareRead
   const calls = new Map<string, number>();
   return async (input, init) => {
     const method = init?.method ?? "GET";
-    recorded.push({ url: input, method, headers: { ...(init?.headers ?? {}) } });
+    recorded.push({
+      url: input,
+      method,
+      headers: { ...(init?.headers ?? {}) },
+      redirect: init?.redirect,
+      hasAbortSignal: init?.signal instanceof AbortSignal
+    });
     if (method !== "GET") {
       throw new Error(`Mutation request attempted against Cloudflare: ${method} ${input}`);
     }
@@ -305,12 +313,14 @@ describe("cloudflare evidence reader", () => {
 
     await captureCloudflareDomainEvidence(captureInput(fetchImpl));
 
-    expect(recorded.length).toBeGreaterThanOrEqual(7);
+    expect(recorded.length).toBe(7);
     for (const request of recorded) {
       expect(request.method).toBe("GET");
       const url = new URL(request.url);
       expect(url.origin).toBe("https://api.cloudflare.com");
       expect(request.headers.authorization).toBe(`Bearer ${apiToken}`);
+      expect(request.redirect).toBe("error");
+      expect(request.hasAbortSignal).toBe(true);
     }
   });
 
@@ -448,7 +458,8 @@ describe("cloudflare evidence pagination", () => {
         makeFetch(
           happyRoutes({
             zoneList: () => jsonResponse(envelope([reorderedZone])),
-            dnsRecords: dnsRecordsResponder(reorderedPages)
+            dnsRecords: dnsRecordsResponder(reorderedPages),
+            emailRoutingDns: () => jsonResponse(envelope([...routingDnsRequired].reverse()))
           }),
           []
         )
@@ -460,6 +471,44 @@ describe("cloudflare evidence pagination", () => {
     expect(second.snapshot.contentHash).toBe(first.snapshot.contentHash);
     expect(second.snapshot.records).toEqual(first.snapshot.records);
     expect(second.snapshot.nameservers).toEqual(first.snapshot.nameservers);
+    expect(second.snapshot.emailRoutingRequiredRecords).toEqual(
+      first.snapshot.emailRoutingRequiredRecords
+    );
+  });
+
+  it("orders colliding canonical keys deterministically regardless of provider order", async () => {
+    const collisionPair = [
+      {
+        id: "z|300|true|q",
+        type: "TXT",
+        name: "a.example.com",
+        content: "c",
+        ttl: 300
+      },
+      {
+        id: "q",
+        type: "TXT",
+        name: "a.example.com",
+        content: "c|300||z",
+        ttl: 300,
+        proxied: true
+      }
+    ];
+    const forward = await captureCloudflareDomainEvidence(
+      captureInput(makeFetch(happyRoutes({ dnsRecords: dnsRecordsResponder([collisionPair]) }), []))
+    );
+    const backward = await captureCloudflareDomainEvidence(
+      captureInput(
+        makeFetch(
+          happyRoutes({ dnsRecords: dnsRecordsResponder([[...collisionPair].reverse()]) }),
+          []
+        )
+      )
+    );
+
+    expect(forward.snapshot.status).toBe("complete");
+    expect(backward.snapshot.records).toEqual(forward.snapshot.records);
+    expect(backward.snapshot.contentHash).toBe(forward.snapshot.contentHash);
   });
 });
 
@@ -812,6 +861,285 @@ describe("cloudflare provider errors", () => {
     await expect(computeDomainDnsSnapshotHash(capture.snapshot)).resolves.toBe(
       capture.snapshot.contentHash
     );
+  });
+});
+
+describe("cloudflare review-driven hardening", () => {
+  it("fails closed when the zone id is not a Cloudflare zone id format", async () => {
+    const recorded: RecordedRequest[] = [];
+    const fetchImpl = makeFetch(
+      happyRoutes({
+        zoneList: () => jsonResponse(envelope([{ ...zoneFixture, id: "../accounts" }]))
+      }),
+      recorded
+    );
+
+    const capture = await captureCloudflareDomainEvidence(captureInput(fetchImpl));
+
+    expect(capture.errors).toContainEqual(
+      expect.objectContaining({ source: "zone", kind: "malformed_response" })
+    );
+    expect(capture.snapshot.status).toBe("incomplete");
+    expect(recorded).toHaveLength(1);
+  });
+
+  it("fails closed when the zone list itself reports more than one page", async () => {
+    const fetchImpl = makeFetch(
+      happyRoutes({
+        zoneList: () =>
+          jsonResponse(
+            envelope([zoneFixture], {
+              result_info: { page: 1, per_page: 20, total_pages: 2, total_count: 21 }
+            })
+          )
+      }),
+      []
+    );
+
+    const capture = await captureCloudflareDomainEvidence(captureInput(fetchImpl));
+
+    expect(capture.errors).toContainEqual(
+      expect.objectContaining({ source: "zone", kind: "zone_ambiguous" })
+    );
+    expect(capture.snapshot.status).toBe("incomplete");
+  });
+
+  it("fails closed when the same provider record id appears twice", async () => {
+    const fetchImpl = makeFetch(
+      happyRoutes({
+        dnsRecords: dnsRecordsResponder([
+          dnsPageOne,
+          [
+            {
+              id: "rec-mx-10",
+              type: "TXT",
+              name: "drift.example.com",
+              content: '"drifted"',
+              ttl: 300
+            },
+            dnsPageTwo[1] as Record<string, unknown>
+          ]
+        ])
+      }),
+      []
+    );
+
+    const capture = await captureCloudflareDomainEvidence(captureInput(fetchImpl));
+
+    expect(capture.errors).toContainEqual(
+      expect.objectContaining({ source: "dns_records", kind: "pagination_incomplete" })
+    );
+    expect(capture.snapshot.records).toBeUndefined();
+  });
+
+  it("captures an empty zone with zero total pages as clean empty evidence", async () => {
+    const fetchImpl = makeFetch(
+      happyRoutes({
+        dnsRecords: () =>
+          jsonResponse(
+            envelope([], {
+              result_info: { page: 1, per_page: 100, total_pages: 0, total_count: 0 }
+            })
+          )
+      }),
+      []
+    );
+
+    const capture = await captureCloudflareDomainEvidence(captureInput(fetchImpl));
+
+    expect(capture.errors.filter((error) => error.source === "dns_records")).toEqual([]);
+    expect(capture.snapshot.records).toEqual([]);
+    expect(capture.snapshot.rollbackRecordsKnown).toBe(true);
+  });
+
+  it("treats an unrecognized routing-DNS missing-records shape as unknown blocking evidence", async () => {
+    const fetchImpl = makeFetch(
+      happyRoutes({
+        emailRoutingDns: () =>
+          jsonResponse(
+            envelope({ totally: "unrelated", errors: [], future_field: { nested: true } })
+          )
+      }),
+      []
+    );
+
+    const capture = await captureCloudflareDomainEvidence(captureInput(fetchImpl));
+
+    expect(capture.snapshot.emailRoutingDnsReady).toBe("unknown");
+    expect(capture.errors).toContainEqual(
+      expect.objectContaining({ source: "email_routing_dns", kind: "malformed_response" })
+    );
+    expect(capture.snapshot.status).toBe("incomplete");
+  });
+
+  it("treats an empty routing-DNS required-record array as unknown blocking evidence", async () => {
+    const fetchImpl = makeFetch(
+      happyRoutes({ emailRoutingDns: () => jsonResponse(envelope([])) }),
+      []
+    );
+
+    const capture = await captureCloudflareDomainEvidence(captureInput(fetchImpl));
+
+    expect(capture.snapshot.emailRoutingDnsReady).toBe("unknown");
+    expect(capture.errors).toContainEqual(
+      expect.objectContaining({ source: "email_routing_dns", kind: "malformed_response" })
+    );
+  });
+
+  it("fails closed for a routing-DNS required record with an unrecognized type", async () => {
+    const fetchImpl = makeFetch(
+      happyRoutes({
+        emailRoutingDns: () =>
+          jsonResponse(
+            envelope([{ type: "WEIRD", name: "example.com", content: "value", ttl: 300 }])
+          )
+      }),
+      []
+    );
+
+    const capture = await captureCloudflareDomainEvidence(captureInput(fetchImpl));
+
+    expect(capture.snapshot.emailRoutingDnsReady).toBe("unknown");
+    expect(capture.errors).toContainEqual(
+      expect.objectContaining({ source: "email_routing_dns", kind: "malformed_response" })
+    );
+  });
+
+  it("redacts a provider-echoed token from raw evidence and error messages", async () => {
+    const echoBody = {
+      success: false,
+      errors: [{ code: 10000, message: `Authentication error for Bearer ${apiToken}` }],
+      messages: [],
+      result: null,
+      debug_echo: `authorization: Bearer ${apiToken}`
+    };
+    const failure = await captureCloudflareDomainEvidence(
+      captureInput(makeFetch(happyRoutes({ zoneList: () => jsonResponse(echoBody, 403) }), []))
+    );
+
+    const successEcho = envelope([{ name: "send.example.com", enabled: true }], {
+      debug_echo: `Bearer ${apiToken}`
+    });
+    const success = await captureCloudflareDomainEvidence(
+      captureInput(makeFetch(happyRoutes({ emailSending: () => jsonResponse(successEcho) }), []))
+    );
+
+    expect(JSON.stringify(failure)).not.toContain(apiToken);
+    expect(JSON.stringify(success)).not.toContain(apiToken);
+    expect(failure.errors[0]?.message).toContain("[redacted]");
+  });
+
+  it("strips control characters from provider error messages", async () => {
+    const fetchImpl = makeFetch(
+      happyRoutes({
+        catchAll: () =>
+          jsonResponse(
+            {
+              success: false,
+              errors: [{ code: 1002, message: "bad\r\nheader injection" }],
+              messages: [],
+              result: null
+            },
+            400
+          )
+      }),
+      []
+    );
+
+    const capture = await captureCloudflareDomainEvidence(captureInput(fetchImpl));
+
+    const catchAllError = capture.errors.find((error) => error.source === "catch_all");
+    expect(catchAllError?.message).not.toMatch(/[\r\n]/);
+  });
+
+  it("caps captured Cloudflare error codes", async () => {
+    const fetchImpl = makeFetch(
+      happyRoutes({
+        catchAll: () =>
+          jsonResponse(
+            {
+              success: false,
+              errors: Array.from({ length: 25 }, (_, index) => ({
+                code: 1000 + index,
+                message: "error"
+              })),
+              messages: [],
+              result: null
+            },
+            400
+          )
+      }),
+      []
+    );
+
+    const capture = await captureCloudflareDomainEvidence(captureInput(fetchImpl));
+
+    const catchAllError = capture.errors.find((error) => error.source === "catch_all");
+    expect(catchAllError?.cloudflareCodes).toHaveLength(10);
+  });
+
+  it("preserves a capped non-JSON response body as raw evidence and fails closed", async () => {
+    const fetchImpl = makeFetch(
+      happyRoutes({
+        catchAll: () =>
+          new Response("<html>gateway timeout</html>", {
+            status: 200,
+            headers: { "content-type": "text/html" }
+          })
+      }),
+      []
+    );
+
+    const capture = await captureCloudflareDomainEvidence(captureInput(fetchImpl));
+
+    expect(capture.errors).toContainEqual(
+      expect.objectContaining({ source: "catch_all", kind: "malformed_response" })
+    );
+    expect(capture.raw.catchAll).toBe("<html>gateway timeout</html>");
+  });
+
+  it("fails closed when a response body exceeds the size limit", async () => {
+    const oversized = `{"padding":"${"x".repeat(2_100_000)}"}`;
+    const fetchImpl = makeFetch(
+      happyRoutes({
+        catchAll: () =>
+          new Response(oversized, {
+            status: 200,
+            headers: { "content-type": "application/json" }
+          })
+      }),
+      []
+    );
+
+    const capture = await captureCloudflareDomainEvidence(captureInput(fetchImpl));
+
+    const catchAllError = capture.errors.find((error) => error.source === "catch_all");
+    expect(catchAllError?.kind).toBe("malformed_response");
+    expect(catchAllError?.message).toContain("size");
+    expect(capture.snapshot.status).toBe("incomplete");
+  });
+
+  it("rejects malformed tokens and overlong domains before any network request", async () => {
+    for (const overrides of [
+      { auth: { apiToken: "bad\ntoken" } },
+      { auth: { apiToken: `${apiToken} ` } },
+      { domain: `${"a".repeat(63)}.`.repeat(4).slice(0, -1) }
+    ]) {
+      const recorded: RecordedRequest[] = [];
+      await expect(
+        captureCloudflareDomainEvidence(captureInput(makeFetch(happyRoutes(), recorded), overrides))
+      ).rejects.toThrow();
+      expect(recorded).toHaveLength(0);
+    }
+  });
+
+  it("accepts uppercase and trailing-dot domain input by normalizing it", async () => {
+    const capture = await captureCloudflareDomainEvidence(
+      captureInput(makeFetch(happyRoutes(), []), { domain: "EXAMPLE.COM." })
+    );
+
+    expect(capture.snapshot.domain).toBe("example.com");
+    expect(capture.snapshot.status).toBe("complete");
   });
 });
 

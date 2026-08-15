@@ -7,6 +7,19 @@ import type {
 } from "./cloudflare-evidence";
 
 const CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client/v4";
+const MAX_RESPONSE_BYTES = 2_000_000;
+const MAX_RAW_TEXT_LENGTH = 65_536;
+const MAX_ERROR_CODES = 10;
+const REQUEST_TIMEOUT_MS = 30_000;
+
+/** Drop C0/DEL control characters so provider text cannot inject log lines. */
+const stripControlCharacters = (value: string): string =>
+  Array.from(value)
+    .filter((character) => {
+      const code = character.codePointAt(0) ?? 0;
+      return code >= 32 && code !== 127;
+    })
+    .join("");
 
 const cloudflareEnvelopeSchema = z.object({
   success: z.boolean(),
@@ -19,7 +32,7 @@ const cloudflareEnvelopeSchema = z.object({
     .object({
       page: z.number().int().positive(),
       per_page: z.number().int().positive(),
-      total_pages: z.number().int().positive(),
+      total_pages: z.number().int().nonnegative(),
       total_count: z.number().int().nonnegative()
     })
     .optional()
@@ -55,7 +68,9 @@ export async function providerGet(
   try {
     response = await fetchImpl(`${CLOUDFLARE_API_BASE}${pathAndQuery}`, {
       method: "GET",
-      headers: { authorization: `Bearer ${apiToken}` }
+      headers: { authorization: `Bearer ${apiToken}` },
+      redirect: "error",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
     });
   } catch {
     return {
@@ -64,13 +79,40 @@ export async function providerGet(
       error: evidenceError(source, "network_error", "Cloudflare request failed to complete.")
     };
   }
-  let body: unknown = null;
+  let text: string;
   try {
-    body = await response.json();
+    text = await response.text();
   } catch {
     return {
       ok: false,
       body: null,
+      error: evidenceError(
+        source,
+        "malformed_response",
+        "Cloudflare response body could not be read.",
+        response.status
+      )
+    };
+  }
+  if (text.length > MAX_RESPONSE_BYTES) {
+    return {
+      ok: false,
+      body: null,
+      error: evidenceError(
+        source,
+        "malformed_response",
+        "Cloudflare response exceeded the supported size limit.",
+        response.status
+      )
+    };
+  }
+  let body: unknown = null;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return {
+      ok: false,
+      body: text.slice(0, MAX_RAW_TEXT_LENGTH),
       error: evidenceError(
         source,
         "malformed_response",
@@ -94,9 +136,12 @@ export async function providerGet(
   }
   const codes = envelope.data.errors
     .map((entry) => entry.code)
-    .filter((code): code is number => typeof code === "number");
+    .filter((code): code is number => typeof code === "number")
+    .slice(0, MAX_ERROR_CODES);
   if (!response.ok || !envelope.data.success) {
-    const providerMessage = envelope.data.errors[0]?.message?.slice(0, 200);
+    const rawMessage = envelope.data.errors[0]?.message;
+    const providerMessage =
+      rawMessage === undefined ? undefined : stripControlCharacters(rawMessage.slice(0, 200));
     return {
       ok: false,
       body,

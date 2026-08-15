@@ -14,7 +14,7 @@ const testCanonicalize = (value: unknown): string =>
     : value !== null && typeof value === "object"
       ? `{${Object.entries(value)
           .filter(([, item]) => item !== undefined)
-          .sort(([left], [right]) => left.localeCompare(right))
+          .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
           .map(([key, item]) => `${JSON.stringify(key)}:${testCanonicalize(item)}`)
           .join(",")}}`
       : JSON.stringify(value);
@@ -147,5 +147,32 @@ describe("migration readiness fail-closed evidence", () => {
     expect(
       (await evaluateMigrationReadiness(snapshot, { domain: "example.com", now })).blockers
     ).not.toContain("spf_conflicting");
+  });
+
+  it("blocks when captured routing-DNS evidence is unknown", async () => {
+    const snapshot = await safeSnapshot({ emailRoutingDnsReady: "unknown" });
+    expect(
+      (await evaluateMigrationReadiness(snapshot, { domain: "example.com", now })).blockers
+    ).toContain("email_routing_dns_unknown");
+  });
+
+  it("blocks when captured catch-all evidence is unknown", async () => {
+    const snapshot = await safeSnapshot({ catchAllRouting: "unknown" });
+    expect(
+      (await evaluateMigrationReadiness(snapshot, { domain: "example.com", now })).blockers
+    ).toContain("catch_all_unknown");
+  });
+
+  it("does not block for absent, ready, not-ready, or disabled routing evidence fields", async () => {
+    for (const overrides of [
+      {},
+      { emailRoutingDnsReady: "ready" as const, catchAllRouting: "enabled" as const },
+      { emailRoutingDnsReady: "not_ready" as const, catchAllRouting: "disabled" as const }
+    ]) {
+      const snapshot = await safeSnapshot(overrides);
+      const result = await evaluateMigrationReadiness(snapshot, { domain: "example.com", now });
+      expect(result.blockers).not.toContain("email_routing_dns_unknown");
+      expect(result.blockers).not.toContain("catch_all_unknown");
+    }
   });
 });

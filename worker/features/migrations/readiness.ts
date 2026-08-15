@@ -16,7 +16,7 @@ const canonicalizeV1 = (value: unknown): string =>
     : value !== null && typeof value === "object"
       ? `{${Object.entries(value)
           .filter(([, item]) => item !== undefined)
-          .sort(([left], [right]) => left.localeCompare(right))
+          .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
           .map(([key, item]) => `${JSON.stringify(key)}:${canonicalizeV1(item)}`)
           .join(",")}}`
       : JSON.stringify(value);
@@ -124,6 +124,8 @@ export async function evaluateMigrationReadiness(
   }
   if (snapshot.cloudflareEmailRouting !== "enabled")
     blockers.push("cloudflare_routing_not_enabled");
+  if (snapshot.emailRoutingDnsReady === "unknown") blockers.push("email_routing_dns_unknown");
+  if (snapshot.catchAllRouting === "unknown") blockers.push("catch_all_unknown");
   if (!snapshot.rollbackRecordsKnown) blockers.push("rollback_records_unknown");
   if (snapshot.sendingStatus !== "active") warnings.push("sending_status_not_active");
   return {
