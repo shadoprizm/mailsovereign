@@ -64,6 +64,7 @@ absorbed the stack. Never overwrite another agent's branch.
 Read completely before making changes:
 
 ```sh
+sed -n '1,260p' docs/AGENT_ENGINEERING_GUIDE.md
 sed -n '1,260p' AGENTS.md
 sed -n '1,240p' VISION.md
 sed -n '1,220p' README.md
