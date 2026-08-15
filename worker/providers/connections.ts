@@ -38,9 +38,16 @@ export type ImapSmtpConnectionRecord = {
 export type SealedCredential = {
   readonly ciphertext: string;
   readonly keyVersion: number;
+  readonly boundTo: string;
 };
 
 const credentialKeyVersion = 1;
+
+// Sealed blobs are bound to provider id AND row id so neither a ciphertext
+// transplant between rows nor a row-id rewrite can make one unseal elsewhere.
+export function credentialBinding(owner: string, rowId: string): string {
+  return `${owner}:${rowId}`;
+}
 
 export async function insertImapSmtpConnection(
   db: D1Database,
@@ -56,10 +63,15 @@ export async function insertImapSmtpConnection(
   if (input.displayName.trim().length === 0) {
     throw new ProviderError("PROVIDER_CONNECTION_INVALID", input.providerId);
   }
-  const ciphertext = await sealCredentials(key, input.credentials, input.providerId);
+  const id = newId("pconn");
+  const ciphertext = await sealCredentials(
+    key,
+    input.credentials,
+    credentialBinding(input.providerId, id)
+  );
   const timestamp = nowIso();
   const record: ImapSmtpConnectionRecord = {
-    id: newId("pconn"),
+    id,
     providerId: input.providerId,
     kind: "imap-smtp",
     displayName: input.displayName,
@@ -122,16 +134,20 @@ export async function getSealedCredential(
 ): Promise<SealedCredential> {
   const row = await db
     .prepare(
-      `SELECT credential_ciphertext, credential_key_version
+      `SELECT id, credential_ciphertext, credential_key_version
        FROM provider_connections
-       WHERE provider_id = ? AND is_enabled = 1`
+       WHERE provider_id = ? AND is_enabled = 1 AND kind = 'imap-smtp'`
     )
     .bind(owner)
-    .first<{ credential_ciphertext: string; credential_key_version: number }>();
+    .first<{ id: string; credential_ciphertext: string; credential_key_version: number }>();
   if (!row) {
     throw new ProviderError("PROVIDER_NOT_REGISTERED", owner);
   }
-  return { ciphertext: row.credential_ciphertext, keyVersion: row.credential_key_version };
+  return {
+    ciphertext: row.credential_ciphertext,
+    keyVersion: row.credential_key_version,
+    boundTo: credentialBinding(owner, row.id)
+  };
 }
 
 function toRecord(row: ConnectionRow): ImapSmtpConnectionRecord {

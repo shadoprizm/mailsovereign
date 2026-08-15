@@ -84,7 +84,8 @@ describe("imap-smtp connection repository against the real schema", () => {
     expect(JSON.stringify(listed)).not.toContain("v1:");
 
     const sealed = await getSealedCredential(db, providerId("mxroute-primary"));
-    const credentials = await unsealCredentials(key, sealed.ciphertext, "mxroute-primary");
+    expect(sealed.boundTo.startsWith("mxroute-primary:")).toBe(true);
+    const credentials = await unsealCredentials(key, sealed.ciphertext, sealed.boundTo);
     expect(credentials.username()).toBe("ops@example.com");
     expect(credentials.password()).toBe("hunter2-secret");
   });
@@ -134,8 +135,42 @@ describe("imap-smtp connection repository against the real schema", () => {
 
     const transplanted = await getSealedCredential(db, providerId("mxroute-secondary"));
     await expect(
-      unsealCredentials(key, transplanted.ciphertext, "mxroute-secondary")
+      unsealCredentials(key, transplanted.ciphertext, transplanted.boundTo)
     ).rejects.toMatchObject({ code: "PROVIDER_CREDENTIAL_UNAVAILABLE" });
+  });
+
+  it("refuses ciphertext even when a row id is rewritten to match the sealed source", async () => {
+    const sqlite = database();
+    const db = d1From(sqlite);
+    const key = await credentialKey();
+
+    await insertImapSmtpConnection(db, key, {
+      providerId: providerId("mxroute-primary"),
+      displayName: "MXRoute primary",
+      config: validConfig,
+      credentials: new ProviderCredentials("ops@example.com", "primary-secret")
+    });
+    await insertImapSmtpConnection(db, key, {
+      providerId: providerId("mxroute-secondary"),
+      displayName: "MXRoute secondary",
+      config: validConfig,
+      credentials: new ProviderCredentials("ops@example.com", "secondary-secret")
+    });
+
+    const primary = sqlite
+      .prepare("SELECT id, credential_ciphertext FROM provider_connections WHERE provider_id = ?")
+      .get("mxroute-primary") as { id: string; credential_ciphertext: string };
+    sqlite.prepare("DELETE FROM provider_connections WHERE provider_id = ?").run("mxroute-primary");
+    sqlite
+      .prepare(
+        "UPDATE provider_connections SET id = ?, credential_ciphertext = ? WHERE provider_id = ?"
+      )
+      .run(primary.id, primary.credential_ciphertext, "mxroute-secondary");
+
+    const stolen = await getSealedCredential(db, providerId("mxroute-secondary"));
+    await expect(unsealCredentials(key, stolen.ciphertext, stolen.boundTo)).rejects.toMatchObject({
+      code: "PROVIDER_CREDENTIAL_UNAVAILABLE"
+    });
   });
 
   it("fails closed for unknown connections", async () => {

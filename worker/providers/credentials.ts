@@ -48,6 +48,9 @@ export async function sealCredentials(
   credentials: ProviderCredentials,
   boundTo: string
 ): Promise<string> {
+  if (boundTo.length === 0) {
+    throw new ProviderError("PROVIDER_CREDENTIAL_UNAVAILABLE", null);
+  }
   const nonce = crypto.getRandomValues(new Uint8Array(nonceByteLength));
   const payload = new TextEncoder().encode(
     JSON.stringify({ username: credentials.username(), password: credentials.password() })
@@ -65,6 +68,9 @@ export async function unsealCredentials(
   sealed: string,
   boundTo: string
 ): Promise<ProviderCredentials> {
+  if (boundTo.length === 0) {
+    throw new ProviderError("PROVIDER_CREDENTIAL_UNAVAILABLE", null);
+  }
   const parts = sealed.split(":");
   if (parts.length !== 3 || parts[0] !== sealFormat) {
     throw new ProviderError("PROVIDER_CREDENTIAL_UNAVAILABLE", null);

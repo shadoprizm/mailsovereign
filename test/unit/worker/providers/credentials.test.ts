@@ -58,6 +58,18 @@ describe("provider credential sealing", () => {
     expect(first).not.toBe(second);
   });
 
+  it("refuses to seal or unseal with an empty binding", async () => {
+    const key = await importCredentialKey(validSecret);
+    const credentials = new ProviderCredentials("ops@example.com", "s3cret");
+    await expect(sealCredentials(key, credentials, "")).rejects.toMatchObject({
+      code: "PROVIDER_CREDENTIAL_UNAVAILABLE"
+    });
+    const sealed = await sealCredentials(key, credentials, boundTo);
+    await expect(unsealCredentials(key, sealed, "")).rejects.toMatchObject({
+      code: "PROVIDER_CREDENTIAL_UNAVAILABLE"
+    });
+  });
+
   it("binds sealed credentials to their owner and refuses transplanted blobs", async () => {
     const key = await importCredentialKey(validSecret);
     const sealed = await sealCredentials(

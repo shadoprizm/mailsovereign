@@ -146,15 +146,24 @@ describe("imap-smtp connection repository", () => {
     });
   });
 
-  it("returns sealed credentials only for enabled connections", async () => {
+  it("returns sealed credentials only for enabled imap-smtp connections", async () => {
     const { db, prepare, first } = mockDb();
-    first.mockResolvedValue({ credential_ciphertext: "v1:aXY=:Y3Q=", credential_key_version: 1 });
+    first.mockResolvedValue({
+      id: "conn-1",
+      credential_ciphertext: "v1:aXY=:Y3Q=",
+      credential_key_version: 1
+    });
 
     const sealed = await getSealedCredential(db, providerId("mxroute-primary"));
 
-    expect(sealed).toEqual({ ciphertext: "v1:aXY=:Y3Q=", keyVersion: 1 });
+    expect(sealed).toEqual({
+      ciphertext: "v1:aXY=:Y3Q=",
+      keyVersion: 1,
+      boundTo: "mxroute-primary:conn-1"
+    });
     const sql = prepare.mock.calls[0]?.[0] as string;
     expect(sql).toContain("is_enabled = 1");
+    expect(sql).toContain("kind = 'imap-smtp'");
   });
 
   it("fails closed for unknown or disabled connections", async () => {
