@@ -41,7 +41,7 @@ export async function saveFolderCursor(
   cursor: StoredFolderCursor
 ): Promise<void> {
   requireValidStoredCursor(cursor, owner);
-  if (folderPath.length === 0) {
+  if (folderPath.length === 0 || folderPath.length > 512) {
     throw new ProviderError("PROVIDER_MALFORMED_RESPONSE", owner);
   }
   const timestamp = nowIso();

@@ -5,8 +5,8 @@ import type { WorkerEnv } from "@worker/lib/env";
 import { insertImapSmtpConnection, listImapSmtpConnections } from "@worker/providers/connections";
 import { importCredentialKey, ProviderCredentials } from "@worker/providers/credentials";
 import { ProviderError } from "@worker/providers/errors";
+import { createImapSmtpTransportForConnection } from "@worker/providers/imap/factory";
 import type { SmtpClient } from "@worker/providers/imap/ports";
-import { createImapSmtpTransportForConnection } from "@worker/providers/imap/registration";
 import { createImapSmtpMailTransport, SmtpSubmitError } from "@worker/providers/imap/transport";
 import { createProviderConnection, providerId } from "@worker/providers/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -83,6 +83,17 @@ describe("imap-smtp mail transport", () => {
         expect(surfaces, reason).not.toContain("hunter2");
       }
     }
+  });
+
+  it("keeps the taxonomy closed for out-of-union failure reasons", async () => {
+    const hostile = new SmtpSubmitError("rejected", "detail");
+    (hostile as unknown as { reason: string }).reason = "surprise-reason";
+    const submit = vi.fn().mockRejectedValue(hostile);
+    const transport = createImapSmtpMailTransport(connection, { submit });
+    await expect(transport.send(email)).rejects.toMatchObject({
+      code: "PROVIDER_SEND_REJECTED",
+      retryable: false
+    });
   });
 
   it("maps unclassified client failures to a non-retryable rejection without leaking", async () => {

@@ -111,6 +111,17 @@ describe("imap folder cursors", () => {
     });
   });
 
+  it("rejects oversized folder paths before they reach the database", async () => {
+    const db = d1From(database());
+    await expect(
+      saveFolderCursor(db, owner, "x".repeat(600), {
+        uidValidity: 7,
+        lastSeenUid: 1,
+        syncedAt: "2026-08-15T12:00:00.000Z"
+      })
+    ).rejects.toBeInstanceOf(ProviderError);
+  });
+
   it("rejects invalid cursor values before they reach the database", async () => {
     const db = d1From(database());
     for (const cursor of [

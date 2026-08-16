@@ -39,7 +39,8 @@ export function createImapSmtpMailTransport(
         result = await client.submit(email);
       } catch (cause) {
         if (cause instanceof SmtpSubmitError) {
-          throw ProviderError.from(reasonToCode[cause.reason], connection.id, cause);
+          const code = reasonToCode[cause.reason] ?? "PROVIDER_SEND_REJECTED";
+          throw ProviderError.from(code, connection.id, cause);
         }
         throw ProviderError.from("PROVIDER_SEND_REJECTED", connection.id, cause);
       }

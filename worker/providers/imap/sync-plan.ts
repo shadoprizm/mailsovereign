@@ -27,6 +27,9 @@ export type FolderSyncPlan =
 const defaultInitialWindow = 100;
 const defaultBatchLimit = 200;
 
+// RFC 3501: unique identifiers and UIDVALIDITY are unsigned 32-bit values.
+const maxImapUid = 4294967295;
+
 export function planFolderSync(input: {
   folder: ImapFolderStatus;
   cursor: FolderCursor | null;
@@ -34,8 +37,8 @@ export function planFolderSync(input: {
 }): FolderSyncPlan {
   const folder = requireValidFolder(input.folder);
   const cursor = input.cursor ? requireValidCursor(input.cursor) : null;
-  const initialWindow = input.options.initialWindow ?? defaultInitialWindow;
-  const batchLimit = input.options.batchLimit ?? defaultBatchLimit;
+  const initialWindow = requirePositiveOption(input.options.initialWindow, defaultInitialWindow);
+  const batchLimit = requirePositiveOption(input.options.batchLimit, defaultBatchLimit);
   const highestUid = folder.uidNext - 1;
 
   if (cursor === null || cursor.uidValidity !== folder.uidValidity) {
@@ -151,8 +154,10 @@ function requireValidFolder(folder: ImapFolderStatus): ImapFolderStatus {
     folder.path.length === 0 ||
     !Number.isInteger(folder.uidValidity) ||
     folder.uidValidity < 1 ||
+    folder.uidValidity > maxImapUid ||
     !Number.isInteger(folder.uidNext) ||
-    folder.uidNext < 1
+    folder.uidNext < 1 ||
+    folder.uidNext > maxImapUid
   ) {
     throw new ProviderError("PROVIDER_MALFORMED_RESPONSE", null);
   }
@@ -163,10 +168,22 @@ function requireValidCursor(cursor: FolderCursor): FolderCursor {
   if (
     !Number.isInteger(cursor.uidValidity) ||
     cursor.uidValidity < 1 ||
+    cursor.uidValidity > maxImapUid ||
     !Number.isInteger(cursor.lastSeenUid) ||
-    cursor.lastSeenUid < 0
+    cursor.lastSeenUid < 0 ||
+    cursor.lastSeenUid > maxImapUid
   ) {
     throw new ProviderError("PROVIDER_MALFORMED_RESPONSE", null);
   }
   return cursor;
+}
+
+function requirePositiveOption(value: number | undefined, fallback: number): number {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (!Number.isInteger(value) || value < 1) {
+    throw new ProviderError("PROVIDER_MALFORMED_RESPONSE", null);
+  }
+  return value;
 }

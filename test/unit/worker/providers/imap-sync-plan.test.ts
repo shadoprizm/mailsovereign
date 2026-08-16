@@ -136,6 +136,39 @@ describe("folder sync planning", () => {
     }
   });
 
+  it("rejects UIDs beyond the 32-bit space IMAP defines", () => {
+    expect(() =>
+      planFolderSync({
+        folder: { path: "INBOX", uidValidity: 7, uidNext: 2 ** 32 + 1 },
+        cursor: null,
+        options: {}
+      })
+    ).toThrowError(ProviderError);
+    expect(() =>
+      planFolderSync({
+        folder: { path: "INBOX", uidValidity: 2 ** 32 + 1, uidNext: 10 },
+        cursor: null,
+        options: {}
+      })
+    ).toThrowError(ProviderError);
+  });
+
+  it("rejects invalid plan options before they can corrupt a cursor", () => {
+    for (const options of [
+      { initialWindow: 0 },
+      { initialWindow: -5 },
+      { batchLimit: 0 },
+      { batchLimit: -1 },
+      { initialWindow: 1.5 },
+      { batchLimit: Number.NaN }
+    ]) {
+      expect(
+        () => planFolderSync({ folder, cursor: null, options }),
+        JSON.stringify(options)
+      ).toThrowError(ProviderError);
+    }
+  });
+
   it("fails closed on malformed cursors", () => {
     expect(() =>
       planFolderSync({ folder, cursor: { uidValidity: 7, lastSeenUid: -1 }, options: {} })
