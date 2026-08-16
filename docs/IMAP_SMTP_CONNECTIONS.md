@@ -52,9 +52,15 @@ message content.
 Remote protocol detail, mail content, and credentials are never copied into errors or operational
 logs. IMAP protocol logging and Nodemailer debug logging are disabled.
 
+## Operator UI
+
+Owners and admins can open **Settings → Connections** to create a sealed IMAP/SMTP connection,
+verify both protocols without sending mail, and queue a bounded INBOX synchronization. Mailbox
+passwords are accepted only by the connection dialog and are never returned to the browser after
+creation.
+
 ## Current exclusions
 
-- No operator UI is included yet; the surface is API-only.
 - Sent, Drafts, Trash, Junk, Archive, flag, deletion, and move synchronization are not executed yet.
 - SMTP verification does not prove delivery. A live delivery test remains required before claiming
   that outbound mail works.

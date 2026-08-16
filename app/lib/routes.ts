@@ -19,6 +19,7 @@ export const settingsTabs = [
   "mailboxes",
   "users",
   "domains",
+  "connections",
   "notifications",
   "updates",
   "debug"

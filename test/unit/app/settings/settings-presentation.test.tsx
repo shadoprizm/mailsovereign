@@ -277,8 +277,10 @@ describe("settings presentation", () => {
     expect(html).not.toContain(">Upgrade<");
     expect(html).not.toContain('value="access"');
     expect(html).toContain(">Debug<");
+    expect(html).toContain(">Connections<");
     expect(html).toContain(">Notifications<");
     expect(html).toContain('href="/settings/mailboxes"');
+    expect(html).toContain('href="/settings/connections"');
     expect(html).toContain('href="/settings/notifications"');
     expect(html).toContain('href="/settings/debug"');
     expect(html.indexOf(">Debug<")).toBeGreaterThan(html.indexOf(">Updates<"));

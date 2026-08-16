@@ -6,6 +6,7 @@ import { MailboxSettings } from "@/features/mailboxes/mailbox-settings";
 import type { Mailbox } from "@/features/mailboxes/types";
 import { NotificationSettings } from "@/features/notifications/notification-settings";
 import type { NotificationController } from "@/features/notifications/types";
+import { ProviderConnectionSettings } from "@/features/provider-connections/connection-settings";
 import { DebugSettings } from "@/features/settings/debug-settings";
 import { SettingsSection } from "@/features/settings/settings-section";
 import type { SetupStatus } from "@/features/setup/types";
@@ -66,6 +67,7 @@ export function SettingsPage({
             <SettingsTab value="mailboxes">Mailboxes</SettingsTab>
             <SettingsTab value="users">Users</SettingsTab>
             {canManage ? <SettingsTab value="domains">Domains</SettingsTab> : null}
+            {canManage ? <SettingsTab value="connections">Connections</SettingsTab> : null}
             <SettingsTab value="notifications">Notifications</SettingsTab>
             {canManage ? <SettingsTab value="updates">Updates</SettingsTab> : null}
             <SettingsTab value="debug">Debug</SettingsTab>
@@ -94,6 +96,11 @@ export function SettingsPage({
           {canManage ? (
             <TabsContent className="mt-5" value="domains">
               <DomainSettings portalHostname={setup.portalHostname} onChanged={onRefresh} />
+            </TabsContent>
+          ) : null}
+          {canManage ? (
+            <TabsContent className="mt-5" value="connections">
+              <ProviderConnectionSettings />
             </TabsContent>
           ) : null}
           <TabsContent className="mt-5" value="notifications">

@@ -116,7 +116,7 @@ export function App(): React.ReactElement {
   React.useEffect(() => {
     if (!user || isLoading || route.kind !== "settings") return;
     const canManage = user.role === "owner" || user.role === "admin";
-    const managementOnly = ["domains", "updates"].includes(route.tab);
+    const managementOnly = ["domains", "connections", "updates"].includes(route.tab);
     if (!canManage && managementOnly) {
       navigate({ kind: "settings", tab: "mailboxes" }, true);
     }
