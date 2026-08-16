@@ -53,7 +53,7 @@ export function validateDomain(input: {
 
   const subdomain = input.appSubdomain.trim().toLowerCase();
   if (!appSubdomainPattern.test(subdomain)) {
-    errors.appSubdomain = "Use one DNS label, such as hqbase or inbox.";
+    errors.appSubdomain = "Use one DNS label, such as app or inbox.";
   }
   return errors;
 }

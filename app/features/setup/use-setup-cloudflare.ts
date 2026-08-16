@@ -22,7 +22,7 @@ export function useSetupCloudflare(callbacks: {
   const [selectedZoneIds, setSelectedZoneIds] = React.useState<string[]>([]);
   const [portalZoneId, setPortalZoneId] = React.useState("");
   const workerName = React.useMemo(() => inferWorkerName(), []);
-  const [appSubdomain, setAppSubdomain] = React.useState("hqbase");
+  const [appSubdomain, setAppSubdomain] = React.useState("app");
   const [domainAttempted, setDomainAttempted] = React.useState(false);
   const [connectionError, setConnectionError] = React.useState<string | null>(null);
   const [results, setResults] = React.useState<ConfiguredDomain[]>([]);

@@ -32,7 +32,7 @@ export function SetupPreview(): React.ReactElement {
   const [ownerName, setOwnerName] = React.useState("Alex Morgan");
   const [ownerEmail, setOwnerEmail] = React.useState("alex@northstar.example");
   const [ownerPassword, setOwnerPassword] = React.useState("preview-password");
-  const [appSubdomain, setAppSubdomain] = React.useState("hqbase");
+  const [appSubdomain, setAppSubdomain] = React.useState("app");
   const [portalZoneId, setPortalZoneId] = React.useState(zones[0]?.id ?? "zone-primary");
   const [selectedZoneIds, setSelectedZoneIds] = React.useState(zones.map((zone) => zone.id));
   const [mailboxes, setMailboxes] = React.useState<MailboxDraft[]>(() =>

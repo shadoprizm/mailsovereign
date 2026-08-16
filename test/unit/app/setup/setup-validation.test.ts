@@ -96,7 +96,7 @@ describe("setup form validation", () => {
         portalZone: null
       })
     ).toEqual({
-      appSubdomain: "Use one DNS label, such as hqbase or inbox.",
+      appSubdomain: "Use one DNS label, such as app or inbox.",
       selectedZoneIds: "Choose at least one email domain.",
       portalZoneId: "Choose which selected domain hosts the workspace portal."
     });
