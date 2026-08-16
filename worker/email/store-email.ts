@@ -13,6 +13,7 @@ export type StoreInboundInput = {
   envelopeRecipient: string;
   raw: ArrayBuffer;
   parsed: ParsedEmail;
+  dedupeKey?: string;
 };
 
 export type StoreInboundResult = {
@@ -25,11 +26,20 @@ export async function storeInboundEmail(
   bucket: R2Bucket,
   input: StoreInboundInput
 ): Promise<StoreInboundResult> {
+  if (
+    input.dedupeKey !== undefined &&
+    (input.dedupeKey.length === 0 ||
+      input.dedupeKey.length > 1024 ||
+      hasControlCharacters(input.dedupeKey))
+  ) {
+    throw new Error("Inbound dedupe key is invalid.");
+  }
   const recipient = input.envelopeRecipient.toLowerCase();
   const initialPlan = planInboundStorage({
     envelopeRecipient: recipient,
     mailboxId: null,
-    parsed: input.parsed
+    parsed: input.parsed,
+    ...(input.dedupeKey ? { dedupeKeyOverride: input.dedupeKey } : {})
   });
   const dedupeKey = initialPlan.dedupeKey;
   const duplicate = dedupeKey ? await findDuplicate(db, dedupeKey) : null;
@@ -56,7 +66,8 @@ export async function storeInboundEmail(
   const plan = planInboundStorage({
     envelopeRecipient: recipient,
     mailboxId: mailbox?.id ?? null,
-    parsed: input.parsed
+    parsed: input.parsed,
+    ...(input.dedupeKey ? { dedupeKeyOverride: input.dedupeKey } : {})
   });
   const threadId = await resolveInboundThread(db, {
     inReplyTo: input.parsed.inReplyTo,
@@ -109,6 +120,14 @@ export async function storeInboundEmail(
     inserted: true,
     message: (await getMessageDetail(db, message.id)) ?? message
   };
+}
+
+function hasControlCharacters(value: string): boolean {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    if (codePoint < 32 || codePoint === 127) return true;
+  }
+  return false;
 }
 
 async function findDuplicate(db: D1Database, dedupeKey: string): Promise<MessageSummary | null> {

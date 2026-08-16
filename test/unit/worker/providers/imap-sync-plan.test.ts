@@ -236,12 +236,40 @@ describe("folder listing reconciliation", () => {
 
   it("detects a cross-folder move by message id", () => {
     const result = reconcileFolderListing({
-      known: [{ uid: 6, seen: true, messageIdHeader: "<m1@example.com>" }],
+      known: [
+        {
+          uid: 6,
+          seen: true,
+          messageIdHeader: "<m1@example.com>",
+          senderAddress: "sender@example.com"
+        }
+      ],
       listing: [],
-      otherFolderMessageIds: new Set(["<m1@example.com>"])
+      otherFolderMessages: [
+        { messageIdHeader: "<m1@example.com>", senderAddress: "sender@example.com" }
+      ]
     });
     expect(result.deletedUids).toEqual([]);
     expect(result.movedMessageIds).toEqual(["<m1@example.com>"]);
+  });
+
+  it("does not trust Message-ID alone when classifying a cross-folder move", () => {
+    const result = reconcileFolderListing({
+      known: [
+        {
+          uid: 6,
+          seen: true,
+          messageIdHeader: "<forgeable@example.com>",
+          senderAddress: "legitimate@example.com"
+        }
+      ],
+      listing: [],
+      otherFolderMessages: [
+        { messageIdHeader: "<forgeable@example.com>", senderAddress: "attacker@example.com" }
+      ]
+    });
+    expect(result.deletedUids).toEqual([6]);
+    expect(result.movedMessageIds).toEqual([]);
   });
 });
 
@@ -250,20 +278,42 @@ describe("sent-folder and duplicate reconciliation", () => {
     expect(
       shouldStoreSyncedMessage({
         messageIdHeader: "<sent-by-us@example.com>",
-        knownMessageIds: new Set(["<sent-by-us@example.com>"])
+        senderAddress: "ops@example.com",
+        knownMessages: [
+          { messageIdHeader: "<sent-by-us@example.com>", senderAddress: "ops@example.com" }
+        ]
       })
     ).toBe(false);
+  });
+
+  it("does not suppress a forged Message-ID from a different sender", () => {
+    expect(
+      shouldStoreSyncedMessage({
+        messageIdHeader: "<sent-by-us@example.com>",
+        senderAddress: "attacker@example.com",
+        knownMessages: [
+          { messageIdHeader: "<sent-by-us@example.com>", senderAddress: "ops@example.com" }
+        ]
+      })
+    ).toBe(true);
   });
 
   it("stores unseen messages and messages without a message id", () => {
     expect(
       shouldStoreSyncedMessage({
         messageIdHeader: "<new@example.com>",
-        knownMessageIds: new Set(["<other@example.com>"])
+        senderAddress: "sender@example.com",
+        knownMessages: [
+          { messageIdHeader: "<other@example.com>", senderAddress: "sender@example.com" }
+        ]
       })
     ).toBe(true);
-    expect(shouldStoreSyncedMessage({ messageIdHeader: null, knownMessageIds: new Set() })).toBe(
-      true
-    );
+    expect(
+      shouldStoreSyncedMessage({
+        messageIdHeader: null,
+        senderAddress: "sender@example.com",
+        knownMessages: []
+      })
+    ).toBe(true);
   });
 });

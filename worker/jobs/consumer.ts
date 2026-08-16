@@ -1,6 +1,8 @@
 import { nowIso } from "../db/client";
 import type { WorkerEnv } from "../lib/env";
 import { operationalLog } from "../observability/log";
+import { executeImapConnectionSync } from "../providers/imap/executor";
+import { providerId } from "../providers/types";
 import { isJob, type Job } from "./types";
 
 const batchSize = 100;
@@ -85,18 +87,9 @@ async function integrityCounters(env: WorkerEnv): Promise<Record<string, number>
 
 export async function processJob(env: WorkerEnv, job: Job): Promise<void> {
   const startedAt = nowIso();
-  const inserted = await env.DB.prepare(
-    `INSERT OR IGNORE INTO operation_runs
-     (id, kind, status, counters_json, started_at) VALUES (?, ?, 'running', '{}', ?)`
-  )
-    .bind(job.id, job.kind, startedAt)
-    .run();
-  if ((inserted.meta.changes ?? 0) === 0) return;
+  if (!(await claimJobRun(env.DB, job, startedAt))) return;
   try {
-    const counters =
-      job.kind === "maintenance"
-        ? { ...(await deleteExpiredRows(env)), retainedMessages: await applyRetention(env) }
-        : await integrityCounters(env);
+    const counters = await jobCounters(env, job);
     await env.DB.prepare(
       `UPDATE operation_runs SET status = 'succeeded', counters_json = ?, finished_at = ?
        WHERE id = ?`
@@ -113,6 +106,36 @@ export async function processJob(env: WorkerEnv, job: Job): Promise<void> {
     operationalLog("error", "job_failed", { jobId: job.id, kind: job.kind });
     throw error;
   }
+}
+
+export async function claimJobRun(db: D1Database, job: Job, startedAt: string): Promise<boolean> {
+  const claimed = await db
+    .prepare(
+      `INSERT INTO operation_runs
+     (id, kind, status, counters_json, started_at) VALUES (?, ?, 'running', '{}', ?)
+     ON CONFLICT(id) DO UPDATE SET
+       status = 'running', counters_json = '{}', error_code = NULL,
+       started_at = excluded.started_at, finished_at = NULL
+     WHERE operation_runs.status = 'failed'`
+    )
+    .bind(job.id, job.kind, startedAt)
+    .run();
+  return (claimed.meta.changes ?? 0) > 0;
+}
+
+async function jobCounters(env: WorkerEnv, job: Job): Promise<Record<string, number>> {
+  if (job.kind === "maintenance") {
+    return { ...(await deleteExpiredRows(env)), retainedMessages: await applyRetention(env) };
+  }
+  if (job.kind === "integrity-scan") return integrityCounters(env);
+  const result = await executeImapConnectionSync(env, providerId(job.providerId));
+  return {
+    folders: result.folders,
+    fetched: result.fetched,
+    inserted: result.inserted,
+    duplicates: result.duplicates,
+    hasMore: result.hasMore ? 1 : 0
+  };
 }
 
 export async function consumeJobs(batch: MessageBatch<Job>, env: WorkerEnv): Promise<void> {

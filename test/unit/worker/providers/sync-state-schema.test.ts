@@ -5,12 +5,14 @@ import { describe, expect, it } from "vitest";
 
 const connectionsSql = readFileSync(resolve("migrations/0011_provider_connections.sql"), "utf8");
 const syncStateSql = readFileSync(resolve("migrations/0012_provider_sync_state.sql"), "utf8");
+const syncBackfillSql = readFileSync(resolve("migrations/0013_provider_sync_backfill.sql"), "utf8");
 
 function database() {
   const db = new DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys=ON;");
   db.exec(connectionsSql);
   db.exec(syncStateSql);
+  db.exec(syncBackfillSql);
   db.prepare(
     `INSERT INTO provider_connections
      (id, provider_id, kind, display_name, config_json, credential_ciphertext,
@@ -49,6 +51,20 @@ describe("provider sync-state schema behavior", () => {
       .prepare("SELECT last_seen_uid FROM provider_sync_state WHERE id = ?")
       .get("sync-1") as { last_seen_uid: number };
     expect(row.last_seen_uid).toBe(42);
+  });
+
+  it("stores a nullable bounded backfill boundary", () => {
+    const db = database();
+    insert(db, { backfill_before_uid: 21 });
+    const row = db
+      .prepare("SELECT backfill_before_uid FROM provider_sync_state WHERE id = ?")
+      .get("sync-1") as { backfill_before_uid: number | null };
+    expect(row.backfill_before_uid).toBe(21);
+
+    const invalid = database();
+    expect(() => insert(invalid, { backfill_before_uid: 0 })).toThrowError(/CHECK/);
+    const oversized = database();
+    expect(() => insert(oversized, { backfill_before_uid: 2 ** 32 })).toThrowError(/CHECK/);
   });
 
   it("enforces one cursor per provider and folder", () => {

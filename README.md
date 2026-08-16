@@ -63,6 +63,14 @@ pnpm deploy:dry-run
 
 Run `pnpm cf:typegen` after changing `wrangler.jsonc`.
 
+## Connected IMAP/SMTP providers (experimental)
+
+The Worker can seal operator-supplied provider credentials, verify IMAP and SMTP connectivity, and
+run a bounded, retry-safe INBOX synchronization through ImapFlow and Nodemailer under the existing
+`nodejs_compat` runtime. See [the operator notes](docs/IMAP_SMTP_CONNECTIONS.md) for the secret,
+API, limits, and current exclusions. No provider is contacted until an authenticated operator
+creates a connection and explicitly verifies or synchronizes it.
+
 ## Documentation
 
 [hqbase.io/docs](https://hqbase.io/docs/) is the single public home for user and operator guides,

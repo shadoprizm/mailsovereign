@@ -11,7 +11,7 @@ import { providerId as parseProviderId } from "./types";
 const hostSchema = z.string().min(1).max(255).regex(/^\S+$/);
 const portSchema = z.number().int().min(1).max(65535);
 
-const imapSmtpConfigSchema = z
+export const imapSmtpConfigSchema = z
   .object({
     imapHost: hostSchema,
     imapPort: portSchema,
@@ -81,12 +81,13 @@ export async function insertImapSmtpConnection(
     createdAt: timestamp,
     updatedAt: timestamp
   };
-  await db
+  const inserted = await db
     .prepare(
       `INSERT INTO provider_connections
        (id, provider_id, kind, display_name, config_json, credential_ciphertext,
         credential_key_version, is_enabled, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+       ON CONFLICT(provider_id) DO NOTHING`
     )
     .bind(
       record.id,
@@ -100,6 +101,9 @@ export async function insertImapSmtpConnection(
       timestamp
     )
     .run();
+  if (inserted.meta?.changes === 0) {
+    throw new ProviderError("PROVIDER_ALREADY_REGISTERED", input.providerId);
+  }
   return record;
 }
 
@@ -126,6 +130,23 @@ export async function listImapSmtpConnections(db: D1Database): Promise<ImapSmtpC
     )
     .all<ConnectionRow>();
   return (results ?? []).map(toRecord);
+}
+
+export async function getImapSmtpConnection(
+  db: D1Database,
+  owner: ProviderId
+): Promise<ImapSmtpConnectionRecord> {
+  const row = await db
+    .prepare(
+      `SELECT id, provider_id, kind, display_name, config_json,
+              credential_key_version, is_enabled, created_at, updated_at
+       FROM provider_connections
+       WHERE provider_id = ? AND kind = 'imap-smtp'`
+    )
+    .bind(owner)
+    .first<ConnectionRow>();
+  if (!row) throw new ProviderError("PROVIDER_NOT_REGISTERED", owner);
+  return toRecord(row);
 }
 
 export async function getSealedCredential(

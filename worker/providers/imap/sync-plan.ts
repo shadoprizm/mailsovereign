@@ -81,6 +81,12 @@ export type KnownFolderEntry = {
   readonly uid: number;
   readonly seen: boolean;
   readonly messageIdHeader?: string | null;
+  readonly senderAddress?: string | null;
+};
+
+export type MessageIdentity = {
+  readonly messageIdHeader: string;
+  readonly senderAddress: string;
 };
 
 export type FolderReconciliation = {
@@ -93,7 +99,7 @@ export type FolderReconciliation = {
 export function reconcileFolderListing(input: {
   known: readonly KnownFolderEntry[];
   listing: readonly ImapListingEntry[];
-  otherFolderMessageIds?: ReadonlySet<string>;
+  otherFolderMessages?: readonly MessageIdentity[];
 }): FolderReconciliation {
   const listed = new Map<number, ImapListingEntry>();
   for (const entry of input.listing) {
@@ -106,6 +112,9 @@ export function reconcileFolderListing(input: {
   const deletedUids: number[] = [];
   const flagChanges: { uid: number; seen: boolean }[] = [];
   const movedMessageIds: string[] = [];
+  const otherFolderIdentities = new Set(
+    input.otherFolderMessages?.map((message) => identityKey(message)) ?? []
+  );
   const knownUids = new Set<number>();
   for (const known of input.known) {
     if (!Number.isInteger(known.uid) || known.uid < 1 || knownUids.has(known.uid)) {
@@ -115,7 +124,12 @@ export function reconcileFolderListing(input: {
     const current = listed.get(known.uid);
     if (!current) {
       const messageId = known.messageIdHeader ?? null;
-      if (messageId && input.otherFolderMessageIds?.has(messageId)) {
+      const senderAddress = known.senderAddress ?? null;
+      if (
+        messageId &&
+        senderAddress &&
+        otherFolderIdentities.has(identityKey({ messageIdHeader: messageId, senderAddress }))
+      ) {
         movedMessageIds.push(messageId);
       } else {
         deletedUids.push(known.uid);
@@ -135,18 +149,27 @@ export function reconcileFolderListing(input: {
     deletedUids,
     flagChanges,
     untrackedUids,
-    ...(input.otherFolderMessageIds ? { movedMessageIds } : {})
+    ...(input.otherFolderMessages ? { movedMessageIds } : {})
   };
 }
 
 export function shouldStoreSyncedMessage(input: {
   messageIdHeader: string | null;
-  knownMessageIds: ReadonlySet<string>;
+  senderAddress: string | null;
+  knownMessages: readonly MessageIdentity[];
 }): boolean {
-  if (input.messageIdHeader === null) {
+  if (input.messageIdHeader === null || input.senderAddress === null) {
     return true;
   }
-  return !input.knownMessageIds.has(input.messageIdHeader);
+  const candidate = identityKey({
+    messageIdHeader: input.messageIdHeader,
+    senderAddress: input.senderAddress
+  });
+  return !input.knownMessages.some((known) => identityKey(known) === candidate);
+}
+
+function identityKey(identity: MessageIdentity): string {
+  return `${identity.messageIdHeader}\u0000${identity.senderAddress.trim().toLowerCase()}`;
 }
 
 function requireValidFolder(folder: ImapFolderStatus): ImapFolderStatus {

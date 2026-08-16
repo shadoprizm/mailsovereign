@@ -12,6 +12,7 @@ export async function handleInboundEmail(
   return storeInboundEmail(env.DB, env.MAIL_OBJECTS, {
     envelopeRecipient: event.envelopeRecipient,
     raw: event.raw,
-    parsed
+    parsed,
+    ...(event.providerMessageKey ? { dedupeKey: event.providerMessageKey } : {})
   });
 }
