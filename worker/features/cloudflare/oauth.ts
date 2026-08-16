@@ -125,7 +125,7 @@ export async function resolveRuntimeCloudflareGrant(
   if (!grant) {
     throw new AppError(
       "CLOUDFLARE_ACCESS_REQUIRED",
-      "Authorize Cloudflare again. If your organization blocks the public HQBase OAuth application, configure customer-managed OAuth and retry.",
+      "Authorize Cloudflare again. If your organization blocks the public Sovereign Mail OAuth application, configure customer-managed OAuth and retry.",
       401
     );
   }

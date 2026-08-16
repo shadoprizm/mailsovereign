@@ -44,7 +44,7 @@ describe("setup UI", () => {
     );
 
     expect(html).toContain('aria-label="Installation steps"');
-    expect(html).toContain("Deploy HQBase resources");
+    expect(html).toContain("Deploy Sovereign Mail resources");
     expect(html).toContain("Worker and customer-owned storage");
     expect(html).toContain("Complete");
     expect(html).toContain("Authorize and install");
@@ -103,7 +103,7 @@ describe("setup UI", () => {
     );
 
     expect(html).toContain("Login email");
-    expect(html).toContain("always access, even when HQBase is unavailable");
+    expect(html).toContain("always access, even when Sovereign Mail is unavailable");
     expect(html).toContain("cannot use a domain connected to this workspace");
     expect(html).not.toContain("external");
   });

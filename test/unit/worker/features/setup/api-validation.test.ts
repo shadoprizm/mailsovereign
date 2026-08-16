@@ -59,7 +59,9 @@ describe("setup API validation", () => {
         defaultFromMailboxAddress: "hello@example.com",
         mailboxes: [{ address: "hello@example.com", displayName: "Hello" }]
       })
-    ).toThrow("Use an email account you can always access, even when HQBase is unavailable.");
+    ).toThrow(
+      "Use an email account you can always access, even when Sovereign Mail is unavailable."
+    );
   });
 
   it("rejects duplicate bootstrap mailboxes", () => {

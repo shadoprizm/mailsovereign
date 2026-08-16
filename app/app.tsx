@@ -133,7 +133,7 @@ export function App(): React.ReactElement {
   }
 
   if (isLoading && setup === null) {
-    return <FullScreenStatus label="Loading HQBase" />;
+    return <FullScreenStatus label="Loading Sovereign Mail" />;
   }
 
   if (!setup?.isComplete) {

@@ -110,7 +110,7 @@ export function SetupPreview(): React.ReactElement {
             ? "Add your domain, owner account, and mailboxes."
             : "Complete installation before configuring your workspace."
         }
-        title={activePhase === 3 ? "Configure workspace" : "Set up HQBase"}
+        title={activePhase === 3 ? "Configure workspace" : "Set up Sovereign Mail"}
       >
         <WizardLayout
           activePhase={activePhase}

@@ -45,7 +45,7 @@ describe("reply body", () => {
   it("bounds quoted message content", () => {
     const body = buildReplyBody({ text: "Reply" }, { ...original, textBody: "a".repeat(100_001) });
 
-    expect(body.text).toContain("[Previous message truncated by HQBase]");
+    expect(body.text).toContain("[Previous message truncated by Sovereign Mail]");
     expect(body.html).toBeUndefined();
   });
 });

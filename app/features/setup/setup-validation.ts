@@ -89,7 +89,8 @@ export function validateMailboxes(
   let form: string | undefined;
 
   if (mailboxes.length === 0) form = "Add at least one shared mailbox.";
-  else if (mailboxes.length > 20) form = "HQBase setup supports up to 20 initial mailboxes.";
+  else if (mailboxes.length > 20)
+    form = "Sovereign Mail setup supports up to 20 initial mailboxes.";
 
   mailboxes.forEach((mailbox, index) => {
     const address = mailbox.address.trim().toLowerCase();

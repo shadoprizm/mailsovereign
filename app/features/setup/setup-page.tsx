@@ -19,7 +19,7 @@ export function SetupPage({ onComplete }: { onComplete: () => void }): React.Rea
           ? "Add your domain, owner account, and shared addresses."
           : "Complete installation before configuring your workspace."
       }
-      title={activePhase === 3 ? "Configure workspace" : "Set up HQBase"}
+      title={activePhase === 3 ? "Configure workspace" : "Set up Sovereign Mail"}
     >
       <WizardLayout activePhase={activePhase} activeStep={flow.activeStep} steps={flow.steps}>
         {flow.activeStep === ACCESS_STEP ? <AccessStep {...flow.access} /> : null}

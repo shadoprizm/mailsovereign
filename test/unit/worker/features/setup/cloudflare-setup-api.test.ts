@@ -195,7 +195,7 @@ describe("Cloudflare setup API", () => {
         actions: [{ type: "worker", value: ["hqbase"] }],
         enabled: true,
         matchers: [{ type: "all" }],
-        name: "HQBase catch-all"
+        name: "Sovereign Mail catch-all"
       })
     );
     expect(catchAllCall?.[1]?.method).toBe("PUT");
@@ -312,11 +312,11 @@ describe("Cloudflare setup API", () => {
     const routingStep = result.steps.find((step) => step.id === "routing");
     expect(routingStep).toMatchObject({
       message:
-        "Cloudflare rejected the Email Routing DNS/settings request. Authorize HQBase with Zone Settings Edit, then retry the domain connection.",
+        "Cloudflare rejected the Email Routing DNS/settings request. Authorize Sovereign Mail with Zone Settings Edit, then retry the domain connection.",
       status: "failed"
     });
     expect(result.status.routing.error).toBe(
-      "Cloudflare rejected the Email Routing DNS/settings request. Authorize HQBase with Zone Settings Edit, then retry the domain connection."
+      "Cloudflare rejected the Email Routing DNS/settings request. Authorize Sovereign Mail with Zone Settings Edit, then retry the domain connection."
     );
   });
 

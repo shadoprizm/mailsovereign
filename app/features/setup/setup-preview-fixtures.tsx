@@ -89,7 +89,7 @@ export function renderPreviewFixture(input: FixtureInput): React.ReactNode {
         aria-live="polite"
       >
         <Spinner className="text-foreground" />
-        <span>Deploying HQBase resources to Cloudflare…</span>
+        <span>Deploying Sovereign Mail resources to Cloudflare…</span>
       </div>
     );
   }
@@ -202,7 +202,7 @@ function readinessFailureFixture(): ConfiguredDomain[] {
           {
             id: "custom-domain",
             label: "Attach app URL",
-            message: "hqbase.northstar.example routes to the HQBase Worker.",
+            message: "mail.northstar.example routes to the Sovereign Mail Worker.",
             status: "success"
           },
           {
@@ -214,7 +214,7 @@ function readinessFailureFixture(): ConfiguredDomain[] {
           {
             id: "catch-all",
             label: "Route catch-all to Worker",
-            message: "Catch-all routes to the HQBase Worker.",
+            message: "Catch-all routes to the Sovereign Mail Worker.",
             status: "success"
           },
           {

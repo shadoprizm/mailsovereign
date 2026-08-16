@@ -187,7 +187,7 @@ export function DomainSettings({
       </div>
       <CloudflareAuthorizationDialog
         authorizeHref="/api/domains/cloudflare/oauth/start"
-        description="To save this change, HQBase needs temporary access to your Cloudflare account. You’ll return to Domains automatically, and HQBase will update the workspace portal."
+        description="To save this change, Sovereign Mail needs temporary access to your Cloudflare account. You’ll return to Domains automatically, and Sovereign Mail will update the workspace portal."
         open={authorizationOperation?.action === "portal"}
         onAuthorize={() => {
           if (authorizationOperation) {
@@ -224,5 +224,5 @@ function readPendingOperation(): PendingCloudflareOperation | null {
 function oauthErrorMessage(result: string): string {
   if (result === "denied") return "Cloudflare authorization was cancelled.";
   if (result === "invalid") return "Cloudflare authorization expired. Please try again.";
-  return "Cloudflare could not authorize this change. Ask a Cloudflare administrator to allow HQBase or configure customer-managed OAuth from the deployment guide.";
+  return "Cloudflare could not authorize this change. Ask a Cloudflare administrator to allow Sovereign Mail or configure customer-managed OAuth from the deployment guide.";
 }

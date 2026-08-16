@@ -95,7 +95,7 @@ export function Sidebar({
     >
       <div className="mb-7 flex h-9 items-center gap-2.5 px-2">
         <img alt="" className="h-7 w-auto shrink-0" src="/logo.svg" />
-        <span className="text-sm font-medium tracking-tight">HQBase</span>
+        <span className="text-sm font-medium tracking-tight">Sovereign Mail</span>
       </div>
       {isDrawer && mailboxFilter ? (
         <FieldGroup className="mb-4 gap-0 px-2">

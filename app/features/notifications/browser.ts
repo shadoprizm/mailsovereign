@@ -52,7 +52,7 @@ export function serializePushSubscription(
 }
 
 export async function applyUnreadIndicators(unread: UnreadCounts): Promise<void> {
-  document.title = unread.total > 0 ? `(${unread.total}) HQBase` : "HQBase";
+  document.title = unread.total > 0 ? `(${unread.total}) Sovereign Mail` : "Sovereign Mail";
   const badgeNavigator = navigator as BadgeNavigator;
   try {
     if (unread.total > 0 && badgeNavigator.setAppBadge) {

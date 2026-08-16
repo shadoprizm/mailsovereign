@@ -36,7 +36,7 @@ export function resolveOAuthConfig(
   const canonicalOrigin = customerOAuthOrigin(env.BETTER_AUTH_URL);
   if (new URL(request.url).origin !== canonicalOrigin) {
     throw invalidOAuthConfig(
-      "Open the canonical HQBase URL before authorizing the customer-managed OAuth client."
+      "Open the canonical Sovereign Mail URL before authorizing the customer-managed OAuth client."
     );
   }
   return {
@@ -99,7 +99,7 @@ function oauthMode(env: Pick<OAuthConfigEnv, "CLOUDFLARE_OAUTH_MODE">): Cloudfla
 function customerOAuthOrigin(value: string | undefined): string {
   if (!value) {
     throw invalidOAuthConfig(
-      "Customer-managed OAuth requires BETTER_AUTH_URL to be the canonical HTTPS HQBase origin."
+      "Customer-managed OAuth requires BETTER_AUTH_URL to be the canonical HTTPS Sovereign Mail origin."
     );
   }
   let url: URL;

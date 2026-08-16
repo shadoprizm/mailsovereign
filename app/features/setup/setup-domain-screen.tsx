@@ -230,7 +230,7 @@ function compactStepLabel(id: string, fallback: string): string {
   if (id === "custom-domain") return "Attach app URL";
   if (id === "service-domain") return "Attach service URL";
   if (id === "routing") return "Email Routing + DNS";
-  if (id === "catch-all") return "Catch-all → HQBase";
+  if (id === "catch-all") return "Catch-all → Sovereign Mail";
   if (id === "sending") return "Outbound sending";
   return fallback;
 }
@@ -248,7 +248,7 @@ function describeReadinessFailure(status: CloudflareConfigureResult["status"]): 
     );
   }
   if (!status.catchAll.enabled || !status.catchAll.configuredForWorker) {
-    issues.push(status.catchAll.error ?? "Catch-all is not routing to this HQBase Worker.");
+    issues.push(status.catchAll.error ?? "Catch-all is not routing to this Sovereign Mail Worker.");
   }
   if (!status.sending.enabled) {
     issues.push(status.sending.error ?? "Email Sending is not enabled.");

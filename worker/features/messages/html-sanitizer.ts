@@ -289,7 +289,7 @@ function sanitizerOptions(): sanitizeHtml.IOptions {
 function boundedHtml(html: string): string {
   const maxCharacters = 200_000;
   if (html.length <= maxCharacters) return html;
-  return `${html.slice(0, maxCharacters)}<p>[Previous message truncated by HQBase]</p>`;
+  return `${html.slice(0, maxCharacters)}<p>[Previous message truncated by Sovereign Mail]</p>`;
 }
 
 function absoluteRemoteUrl(value: string): string | null {

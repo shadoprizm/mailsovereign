@@ -45,7 +45,7 @@ describe("desktop application shell", () => {
   it("shows a soft minimum-size guard instead of switching a fine-pointer window to mobile", () => {
     expect(desktopLayout).toContain("desktopMinimumWidth = 1024");
     expect(desktopLayout).toContain("desktopMinimumHeight = 600");
-    expect(appShell).toContain("Make the HQBase window a little larger");
+    expect(appShell).toContain("Make the Sovereign Mail window a little larger");
     expect(styles).toContain("(hover: hover) and (pointer: fine) and (max-width: 1023px)");
     expect(styles).toContain("(hover: hover) and (pointer: fine) and (max-height: 599px)");
   });

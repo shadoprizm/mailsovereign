@@ -139,7 +139,7 @@ export function useSetupFlow(onComplete: () => void) {
     try {
       await bootstrapSetup(input);
       localStorage.removeItem("hqb_setup_draft_v1");
-      toast.success("HQBase is ready.");
+      toast.success("Sovereign Mail is ready.");
       onComplete();
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Workspace setup failed.");

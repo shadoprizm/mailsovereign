@@ -172,7 +172,7 @@ export async function configureCloudflareDomain(
     steps.push({
       id: "custom-domain",
       label: "Attach app URL",
-      message: "Skipped. HQBase will stay available on the deployed Worker URL.",
+      message: "Skipped. Sovereign Mail will stay available on the deployed Worker URL.",
       status: "skipped"
     });
   }
@@ -199,7 +199,7 @@ export async function configureCloudflareDomain(
           actions: [{ type: "worker", value: [workerName] }],
           enabled: true,
           matchers: [{ type: "all" }],
-          name: "HQBase catch-all"
+          name: "Sovereign Mail catch-all"
         }),
         method: "PUT"
       }

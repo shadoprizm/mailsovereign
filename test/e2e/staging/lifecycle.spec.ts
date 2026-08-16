@@ -12,7 +12,7 @@ const sender = required("HQBASE_STAGING_SENDER");
 const domain = required("HQBASE_STAGING_EMAIL_DOMAIN");
 const stagingUrl = required("HQBASE_STAGING_URL");
 
-test("HQBase web lifecycle remains healthy", async ({ page, request }) => {
+test("Sovereign Mail web lifecycle remains healthy", async ({ page, request }) => {
   const appOrigin = new URL(stagingUrl).origin;
   const appShellErrors: string[] = [];
   const recordAppShellError = (message: string): void => {
@@ -92,7 +92,7 @@ test("HQBase web lifecycle remains healthy", async ({ page, request }) => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(
       loginEmail.or(primaryEmailAction),
-      "HQBase app shell renders its authenticated state"
+      "Sovereign Mail app shell renders its authenticated state"
     ).toBeVisible({ timeout: 60_000 });
   } catch (error) {
     const shell = await page.evaluate(() => ({
@@ -103,7 +103,7 @@ test("HQBase web lifecycle remains healthy", async ({ page, request }) => {
       ),
       title: document.title
     }));
-    console.error("HQBase app shell diagnostics", { appShellErrors, shell });
+    console.error("Sovereign Mail app shell diagnostics", { appShellErrors, shell });
     throw error;
   }
   if (await loginEmail.isVisible()) {
@@ -137,7 +137,7 @@ test("HQBase web lifecycle remains healthy", async ({ page, request }) => {
         timeout: 15_000
       });
     }).toPass({ intervals: [2_000, 5_000, 10_000], timeout: 60_000 });
-    await expect(page.getByText(`HQBase ${expectedUpdate}`, { exact: false })).toBeVisible({
+    await expect(page.getByText(`Sovereign Mail ${expectedUpdate}`, { exact: false })).toBeVisible({
       timeout: 60_000
     });
   }

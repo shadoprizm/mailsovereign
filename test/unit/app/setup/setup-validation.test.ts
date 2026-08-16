@@ -84,7 +84,7 @@ describe("setup form validation", () => {
       )
     ).toEqual({
       email:
-        "Use an email account you can always access, even when HQBase is unavailable. It cannot use a domain connected to this workspace."
+        "Use an email account you can always access, even when Sovereign Mail is unavailable. It cannot use a domain connected to this workspace."
     });
   });
 

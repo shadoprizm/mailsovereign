@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 const stagingUrl = process.env.HQBASE_STAGING_URL ?? "";
 const oauthClientId = process.env.HQBASE_STAGING_OAUTH_CLIENT_ID ?? "";
 
-test("deployed HQBase PWA shell is ready", async ({ page, request }) => {
+test("deployed Sovereign Mail PWA shell is ready", async ({ page, request }) => {
   await expect
     .poll(
       async () => {
@@ -22,7 +22,7 @@ test("deployed HQBase PWA shell is ready", async ({ page, request }) => {
     expect(manifestResponse.ok()).toBeTruthy();
     expect(await manifestResponse.json()).toMatchObject({
       display: "standalone",
-      name: "HQBase",
+      name: "Sovereign Mail",
       start_url: "/"
     });
 
@@ -32,7 +32,7 @@ test("deployed HQBase PWA shell is ready", async ({ page, request }) => {
     expect((await request.get("/offline.html")).ok()).toBeTruthy();
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    await expect(page).toHaveTitle(/HQBase/);
+    await expect(page).toHaveTitle(/Sovereign Mail/);
     await expect(page.locator("#root > *")).toBeVisible({ timeout: 10_000 });
   }).toPass({ intervals: [2_000, 5_000, 10_000], timeout: 60_000 });
 });

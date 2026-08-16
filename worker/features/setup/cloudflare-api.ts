@@ -104,7 +104,7 @@ function cloudflareErrorMessage(path: string, message?: string): string {
   if (isEmailRoutingSettingsPath(path) && isAuthenticationError(message)) {
     return [
       "Cloudflare rejected the Email Routing DNS/settings request.",
-      "Authorize HQBase with Zone Settings Edit, then retry the domain connection."
+      "Authorize Sovereign Mail with Zone Settings Edit, then retry the domain connection."
     ].join(" ");
   }
   if (message.toLowerCase().includes("invalid api token")) {

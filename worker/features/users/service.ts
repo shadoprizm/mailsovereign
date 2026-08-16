@@ -110,7 +110,7 @@ async function deliverInvitation(
   if (!delivered?.invitationSentAt) {
     throw new AppError(
       "INVITATION_DELIVERY_FAILED",
-      "The user was created, but HQBase could not send the invitation. Try resending it.",
+      "The user was created, but Sovereign Mail could not send the invitation. Try resending it.",
       502
     );
   }

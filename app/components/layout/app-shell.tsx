@@ -238,7 +238,7 @@ function DesktopWindowGuard(): React.ReactElement {
           <AppWindow className="size-4" />
         </div>
         <div className="flex flex-col gap-1.5">
-          <h1 className="text-sm font-medium">Make the HQBase window a little larger</h1>
+          <h1 className="text-sm font-medium">Make the Sovereign Mail window a little larger</h1>
           <p className="text-xs leading-5 text-muted-foreground">
             The desktop workspace needs at least {desktopMinimumWidth} × {desktopMinimumHeight}{" "}
             pixels to keep navigation, conversations, and the reader together.

@@ -117,7 +117,7 @@ export function ConnectDomainDialog({
         <DialogHeader>
           <DialogTitle>Connect domain</DialogTitle>
           <DialogDescription>
-            Load an active Cloudflare zone, then connect it to HQBase.
+            Load an active Cloudflare zone, then connect it to Sovereign Mail.
           </DialogDescription>
         </DialogHeader>
         {authorized ? (

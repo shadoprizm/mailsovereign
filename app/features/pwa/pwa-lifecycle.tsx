@@ -43,8 +43,8 @@ export function PwaLifecycle(): React.ReactElement | null {
     >
       <span>
         {online
-          ? "A new version of HQBase is ready."
-          : "You're offline. HQBase will reconnect when your connection returns."}
+          ? "A new version of Sovereign Mail is ready."
+          : "You're offline. Sovereign Mail will reconnect when your connection returns."}
       </span>
       {online && update ? (
         <button

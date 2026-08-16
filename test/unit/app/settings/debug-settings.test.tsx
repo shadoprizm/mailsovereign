@@ -29,7 +29,7 @@ describe("debug settings", () => {
   it("renders a read-only report without credentials or paid state", () => {
     const html = renderToStaticMarkup(<DebugSettings setup={setup} />);
 
-    expect(html).toContain('aria-label="HQBase debug report"');
+    expect(html).toContain('aria-label="Sovereign Mail debug report"');
     expect(html).toContain("readOnly");
     expect(html).not.toContain('type="password"');
     expect(html).not.toContain("license");

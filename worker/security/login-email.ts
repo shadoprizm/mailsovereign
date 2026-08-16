@@ -1,7 +1,7 @@
 import { AppError } from "../lib/errors";
 
 export const LOGIN_EMAIL_DOMAIN_MESSAGE =
-  "Use an email account you can always access, even when HQBase is unavailable. It cannot use a domain connected to this workspace.";
+  "Use an email account you can always access, even when Sovereign Mail is unavailable. It cannot use a domain connected to this workspace.";
 
 export function loginEmailDomain(email: string): string | null {
   const normalized = email.trim().toLowerCase();

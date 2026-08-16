@@ -28,14 +28,16 @@ export async function sendPasswordSetupEmail(
 
   const invitation = onboarding?.method === "email_invite" && onboarding.status === "pending";
   const action = invitation ? "Accept invitation" : "Reset password";
-  const subject = invitation ? "You’ve been invited to HQBase" : "Reset your HQBase password";
+  const subject = invitation
+    ? "You’ve been invited to Sovereign Mail"
+    : "Reset your Sovereign Mail password";
   const greeting = input.user.name.trim() ? `Hi ${input.user.name.trim()},` : "Hi,";
   const text = [
     greeting,
     "",
     invitation
-      ? "You’ve been invited to join an HQBase workspace."
-      : "A password reset was requested for your HQBase account.",
+      ? "You’ve been invited to join a Sovereign Mail workspace."
+      : "A password reset was requested for your Sovereign Mail account.",
     `${action}: ${input.url}`,
     "",
     "This link expires in seven days and can only be used once."
@@ -43,7 +45,7 @@ export async function sendPasswordSetupEmail(
 
   const transport = getDefaultMailTransport(env);
   await transport.send({
-    from: { name: "HQBase", email: sender },
+    from: { name: "Sovereign Mail", email: sender },
     to: input.user.email,
     subject,
     text,
@@ -87,8 +89,8 @@ function passwordEmailHtml(input: {
   url: string;
 }): string {
   const description = input.invitation
-    ? "You’ve been invited to join an HQBase workspace."
-    : "A password reset was requested for your HQBase account.";
+    ? "You’ve been invited to join a Sovereign Mail workspace."
+    : "A password reset was requested for your Sovereign Mail account.";
   return `<p>${escapeHtml(input.greeting)}</p>
 <p>${escapeHtml(description)}</p>
 <p><a href="${escapeHtml(input.url)}">${escapeHtml(input.action)}</a></p>

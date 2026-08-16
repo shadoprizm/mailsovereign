@@ -19,8 +19,8 @@ describe("user onboarding email", () => {
 
     expect(send).toHaveBeenCalledWith(
       expect.objectContaining({
-        from: { name: "HQBase", email: "support@example.com" },
-        subject: "You’ve been invited to HQBase",
+        from: { name: "Sovereign Mail", email: "support@example.com" },
+        subject: "You’ve been invited to Sovereign Mail",
         to: "person@gmail.com"
       })
     );

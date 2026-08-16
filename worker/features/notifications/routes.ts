@@ -56,7 +56,7 @@ notificationRoutes.put("/subscription", async (c) => {
   if (!configuredPublicKey(c.env) || !c.env.VAPID_PRIVATE_KEY) {
     throw new AppError(
       "PUSH_NOT_CONFIGURED",
-      "Push notifications are not configured for this HQBase installation.",
+      "Push notifications are not configured for this Sovereign Mail installation.",
       503
     );
   }

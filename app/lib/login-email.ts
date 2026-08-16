@@ -1,5 +1,5 @@
 export const LOGIN_EMAIL_HINT =
-  "Use an email account you can always access, even when HQBase is unavailable. It cannot use a domain connected to this workspace.";
+  "Use an email account you can always access, even when Sovereign Mail is unavailable. It cannot use a domain connected to this workspace.";
 
 export function loginEmailUsesManagedDomain(email: string, domains: string[]): boolean {
   const normalized = email.trim().toLowerCase();

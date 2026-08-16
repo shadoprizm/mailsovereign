@@ -20,7 +20,7 @@ describe("PWA build contract", () => {
   it("ships an installable, standalone manifest", async () => {
     const manifest = JSON.parse(await readFile("public/manifest.webmanifest", "utf8"));
     expect(() => validateManifest(manifest)).not.toThrow();
-    expect(manifest.name).toBe("HQBase");
+    expect(manifest.name).toBe("Sovereign Mail");
     expect(manifest.theme_color).toBe("#080808");
   });
 
@@ -42,7 +42,7 @@ describe("PWA build contract", () => {
     expect(iconGenerator).toContain('file: "icon-maskable-512.png", markWidth: 266');
     expect(iconGenerator).toContain('file: "notification-badge.png"');
     expect(logo).toContain('width="168" height="132" viewBox="42 55 168 132"');
-    expect(logo).toContain("<title>HQBase</title>");
+    expect(logo).toContain("<title>Sovereign Mail</title>");
     expect(logo).not.toContain('fill="black"');
     expect(logo).toContain('id="paint0_linear_68_26"');
     expect(favicon).toContain('width="191" height="191" viewBox="30.5 25.5 191 191"');

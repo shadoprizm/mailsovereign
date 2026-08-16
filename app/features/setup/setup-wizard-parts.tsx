@@ -58,7 +58,7 @@ function InstallationTimeline({
         description="Worker and customer-owned storage"
         isLast={false}
         status={activePhase === 1 ? "current" : "complete"}
-        title="Deploy HQBase resources"
+        title="Deploy Sovereign Mail resources"
       >
         {activePhase === 1 ? children : null}
       </InstallationTimelineStep>

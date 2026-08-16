@@ -105,7 +105,7 @@ export function UpdateSettings({
               <h3 className="text-sm font-medium">Update in progress</h3>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
                 {status?.release.version
-                  ? `HQBase ${status.release.version} is being deployed. `
+                  ? `Sovereign Mail ${status.release.version} is being deployed. `
                   : "The new version is being deployed. "}
                 You can keep working while Cloudflare finishes the build.
               </p>
@@ -154,8 +154,8 @@ export function UpdateSettings({
           <div>
             <h3 className="text-sm font-medium">Apply update</h3>
             <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
-              HQBase verifies the artifact, records the Worker version and D1 bookmark, migrates,
-              deploys, and verifies before reporting success.
+              Sovereign Mail verifies the artifact, records the Worker version and D1 bookmark,
+              migrates, deploys, and verifies before reporting success.
             </p>
           </div>
           <div className="flex flex-col gap-4">
@@ -189,7 +189,7 @@ export function UpdateSettings({
       ) : null}
       <CloudflareAuthorizationDialog
         authorizeHref="/api/updates/cloudflare/oauth/start"
-        description="To install this update, HQBase needs temporary access to your Cloudflare account. You’ll return to Updates automatically, and HQBase will start the update."
+        description="To install this update, Sovereign Mail needs temporary access to your Cloudflare account. You’ll return to Updates automatically, and Sovereign Mail will start the update."
         open={authorizationOpen}
         onOpenChange={setAuthorizationOpen}
       />
@@ -200,7 +200,7 @@ export function UpdateSettings({
 function oauthErrorMessage(result: string): string {
   if (result === "denied") return "Cloudflare authorization was cancelled.";
   if (result === "invalid") return "Cloudflare authorization expired. Please try again.";
-  return "Cloudflare could not authorize the update. Ask a Cloudflare administrator to allow HQBase or configure customer-managed OAuth from the deployment guide.";
+  return "Cloudflare could not authorize the update. Ask a Cloudflare administrator to allow Sovereign Mail or configure customer-managed OAuth from the deployment guide.";
 }
 
 function Version({ label, value }: { label: string; value: string }): React.ReactElement {

@@ -12,7 +12,7 @@ export function DebugSettings({ setup }: DebugSettingsProps): React.ReactElement
   return (
     <SettingsSection description="Read-only deployment diagnostics" title="Debug">
       <Textarea
-        aria-label="HQBase debug report"
+        aria-label="Sovereign Mail debug report"
         className="min-h-[30rem] resize-y bg-muted/30 font-mono text-xs leading-5 shadow-none"
         readOnly
         spellCheck={false}
