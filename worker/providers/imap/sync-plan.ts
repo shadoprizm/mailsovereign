@@ -45,7 +45,8 @@ export function planFolderSync(input: {
         nextCursor: { uidValidity: folder.uidValidity, lastSeenUid: 0 }
       };
     }
-    const fetchFromUid = Math.max(1, folder.uidNext - initialWindow);
+    const window = Math.min(initialWindow, batchLimit);
+    const fetchFromUid = Math.max(1, folder.uidNext - window);
     return {
       kind: cursor === null ? "initial" : "reset",
       fetchFromUid,
@@ -104,6 +105,9 @@ export function reconcileFolderListing(input: {
   const movedMessageIds: string[] = [];
   const knownUids = new Set<number>();
   for (const known of input.known) {
+    if (!Number.isInteger(known.uid) || known.uid < 1 || knownUids.has(known.uid)) {
+      throw new ProviderError("PROVIDER_MALFORMED_RESPONSE", null);
+    }
     knownUids.add(known.uid);
     const current = listed.get(known.uid);
     if (!current) {

@@ -69,6 +69,20 @@ describe("folder sync planning", () => {
     });
   });
 
+  it("caps the initial window by the batch limit so no single fetch exceeds it", () => {
+    const plan = planFolderSync({
+      folder,
+      cursor: null,
+      options: { initialWindow: 500, batchLimit: 30 }
+    });
+    expect(plan).toEqual({
+      kind: "initial",
+      fetchFromUid: 71,
+      fetchToUid: 100,
+      nextCursor: { uidValidity: 7, lastSeenUid: 100 }
+    });
+  });
+
   it("reports up to date when the cursor already covers the mailbox", () => {
     const plan = planFolderSync({
       folder,
@@ -155,6 +169,21 @@ describe("folder listing reconciliation", () => {
     const known = [{ uid: 4, seen: true }];
     const result = reconcileFolderListing({ known, listing: [{ uid: 4, seen: true }] });
     expect(result).toEqual({ deletedUids: [], flagChanges: [], untrackedUids: [] });
+  });
+
+  it("fails closed on duplicate or malformed UIDs in the known state", () => {
+    expect(() =>
+      reconcileFolderListing({
+        known: [
+          { uid: 3, seen: true },
+          { uid: 3, seen: false }
+        ],
+        listing: []
+      })
+    ).toThrowError(ProviderError);
+    expect(() =>
+      reconcileFolderListing({ known: [{ uid: -1, seen: true }], listing: [] })
+    ).toThrowError(ProviderError);
   });
 
   it("fails closed on duplicate or malformed UIDs in the provider listing", () => {
