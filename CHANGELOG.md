@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.1
+
+- Remove undeclared legacy `HQBASE_*` runtime bindings when installing or updating Sovereign Mail,
+  while preserving customer Worker secrets.
+- Make replacement of the supported runtime-variable set part of the canonical product-identity
+  specification and release regression coverage.
+
 ## 1.1.0
 
 - Establish Sovereign Mail as the sole public product identity across the application, installer,
