@@ -9,6 +9,7 @@ import { flushHookEffects, renderComponent } from "../render-hook";
 const mocks = vi.hoisted(() => ({
   composeFormProps: null as Record<string, unknown> | null,
   createDraft: vi.fn(),
+  deleteDraft: vi.fn(),
   initializeAutosave: vi.fn(),
   listDrafts: vi.fn(),
   listSignaturePreferences: vi.fn(),
@@ -17,7 +18,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/features/drafts/api", () => ({
   createDraft: mocks.createDraft,
-  deleteDraft: vi.fn(),
+  deleteDraft: mocks.deleteDraft,
   deleteDraftAttachment: vi.fn(),
   listDrafts: mocks.listDrafts,
   uploadDraftAttachment: vi.fn()
@@ -89,6 +90,7 @@ describe("compose dialog", () => {
   beforeEach(() => {
     mocks.composeFormProps = null;
     mocks.createDraft.mockReset();
+    mocks.deleteDraft.mockReset();
     mocks.initializeAutosave.mockReset();
     mocks.listDrafts.mockReset();
     mocks.listSignaturePreferences.mockReset();
@@ -103,6 +105,7 @@ describe("compose dialog", () => {
       text: "",
       html: ""
     });
+    mocks.deleteDraft.mockResolvedValue(undefined);
   });
 
   it("starts a fresh blank message instead of reopening an existing ordinary draft", async () => {
@@ -128,6 +131,37 @@ describe("compose dialog", () => {
       subject: "",
       ready: true
     });
+
+    await view.unmount();
+  });
+
+  it("confirms before discarding the saved draft", async () => {
+    const onOpenChange = vi.fn();
+    const view = await renderComponent(
+      <ComposeDialog
+        defaultFromMailboxId={mailbox.id}
+        draftId={existingDraft.id}
+        mailboxes={[mailbox]}
+        open
+        onOpenChange={onOpenChange}
+        onSent={() => undefined}
+      />
+    );
+    await flushHookEffects();
+
+    expect(mocks.deleteDraft).not.toHaveBeenCalled();
+    await flushHookEffects(() => {
+      (mocks.composeFormProps?.onDiscard as (() => void) | undefined)?.();
+    });
+    const discardButton = [...document.body.querySelectorAll("button")].find(
+      (button) => button.textContent === "Discard draft"
+    );
+    expect(discardButton).toBeDefined();
+    expect(mocks.deleteDraft).not.toHaveBeenCalled();
+
+    await flushHookEffects(() => discardButton?.click());
+    expect(mocks.deleteDraft).toHaveBeenCalledWith(existingDraft.id);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
 
     await view.unmount();
   });
