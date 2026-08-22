@@ -16,7 +16,6 @@ export function deploySource(cwd, options = {}) {
     "exec",
     "wrangler",
     "deploy",
-    "--keep-vars",
     "--var",
     `SOVEREIGN_MAIL_WORKER_NAME:${workerName}`
   ];

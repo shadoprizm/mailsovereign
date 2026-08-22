@@ -126,7 +126,6 @@ export async function deploy(options = {}) {
         "exec",
         "wrangler",
         "deploy",
-        "--keep-vars",
         "--config",
         "wrangler.jsonc",
         "--tag",
