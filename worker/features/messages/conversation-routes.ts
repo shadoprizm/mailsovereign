@@ -42,7 +42,7 @@ conversationRoutes.delete("/:id", async (c) => {
     auth.user.id,
     auth.user.role,
     await getMessageMailboxId(c.env.DB, c.req.param("id")),
-    "agent"
+    "read"
   );
   const mailboxIds = await accessibleMailboxIds(c.env.DB, auth.user.id, auth.user.role, "agent");
   const deleted = await deleteTrashedConversation(c.env, {
