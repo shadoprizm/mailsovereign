@@ -233,6 +233,12 @@ describe("Sovereign Mail release deployment", () => {
     );
     expect(() => workerNameFromConfig({ name: "" })).toThrow("deployed Worker name");
   });
+  it("replaces undeclared legacy variables on both installs and updates", () => {
+    expect(readFileSync("scripts/release/worker-deploy.mjs", "utf8")).not.toContain(
+      '"--keep-vars"'
+    );
+    expect(readFileSync("scripts/release/deploy.mjs", "utf8")).not.toContain('"--keep-vars"');
+  });
   it("generates masked auth and Web Push secrets when the first Workers Build needs them", () => {
     let secretFile;
     deploySource("/customer/repo", {
@@ -257,7 +263,7 @@ describe("Sovereign Mail release deployment", () => {
         expect(args).toContain(
           "SOVEREIGN_MAIL_INSTALLATION_ID:00000000-0000-4000-8000-000000000123"
         );
-        expect(args).toContain("--keep-vars");
+        expect(args).not.toContain("--keep-vars");
         expect(args).toContain(`sovereign-mail:0.1.15:${"a".repeat(64)}`);
         expect(args.at(-2)).toBe("--secrets-file");
         expect(cwd).toBe("/customer/repo");

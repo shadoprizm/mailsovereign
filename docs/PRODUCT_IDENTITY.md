@@ -17,6 +17,10 @@ HQBase may appear only in license/provenance notices and historical migrations n
 existing databases. Runtime behavior, installation, documentation, OAuth, CI, releases, signing
 keys, and updates must not depend on HQBase infrastructure.
 
+Deployments replace the complete supported plain-text runtime-variable set from the signed
+Sovereign Mail configuration. They preserve Worker secrets, but they must not retain undeclared
+legacy variables such as `HQBASE_*` bindings from an earlier installation.
+
 ## Cloudflare authorization
 
 Every production installation supplies a customer-managed Cloudflare OAuth client ID and its own
