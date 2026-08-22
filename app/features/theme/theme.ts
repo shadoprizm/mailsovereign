@@ -1,10 +1,10 @@
 export type AppTheme = "light" | "dark";
 
-export const themeStorageKey = "hqb_theme_v1";
+export const themeStorageKey = "sovereign_mail_theme_v1";
 
 const themeColors: Record<AppTheme, string> = {
   dark: "#080808",
-  light: "#ffffff"
+  light: "#f6f6f3"
 };
 
 export function readStoredTheme(): AppTheme {

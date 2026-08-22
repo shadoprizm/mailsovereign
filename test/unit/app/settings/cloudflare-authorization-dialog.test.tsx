@@ -12,7 +12,7 @@ describe("Cloudflare authorization dialog", () => {
       <Dialog>
         <CloudflareAuthorizationDialogBody
           authorizeHref="/api/domains/cloudflare/oauth/start"
-          description="To save this change, HQBase needs temporary access to your Cloudflare account."
+          description="To save this change, Sovereign Mail needs temporary access to your Cloudflare account."
         />
       </Dialog>
     );
@@ -27,7 +27,7 @@ describe("Cloudflare authorization dialog", () => {
     const html = renderToStaticMarkup(
       <Dialog>
         <CloudflareReauthenticationForm
-          description="To install this update, HQBase needs temporary access to your Cloudflare account."
+          description="To install this update, Sovereign Mail needs temporary access to your Cloudflare account."
           error={null}
           layout="dialog"
           password=""

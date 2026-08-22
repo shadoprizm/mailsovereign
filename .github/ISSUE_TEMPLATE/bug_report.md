@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a reproducible HQBase bug
+about: Report a reproducible Sovereign Mail bug
 ---
 
 ## Summary

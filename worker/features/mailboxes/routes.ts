@@ -1,6 +1,10 @@
 import { Hono } from "hono";
 
-import { requireAuthContext, requireRole } from "../../auth/session";
+import {
+  requireAuthContext,
+  requireRecentSessionForEnvironment,
+  requireRole
+} from "../../auth/session";
 import type { HonoApp } from "../../lib/env";
 import { readJson } from "../../lib/json";
 import { parseWith } from "../../lib/validation";
@@ -10,10 +14,16 @@ import { listMailboxesForUser } from "./queries";
 import {
   createMailbox,
   createMailboxAddress,
+  removeEmptyMailbox,
   removeMailboxAddress,
   updateExistingMailbox
 } from "./service";
-import { createMailboxAddressSchema, createMailboxSchema, updateMailboxSchema } from "./validation";
+import {
+  createMailboxAddressSchema,
+  createMailboxSchema,
+  removeMailboxSchema,
+  updateMailboxSchema
+} from "./validation";
 
 export const mailboxRoutes = new Hono<HonoApp>();
 
@@ -56,6 +66,24 @@ mailboxRoutes.patch("/:id", async (c) => {
     outcome: "success"
   });
   return c.json(updated);
+});
+
+mailboxRoutes.delete("/:id", async (c) => {
+  const auth = await requireAuthContext(c.env, c.req.raw);
+  requireRole(auth, ["owner", "admin"]);
+  requireRecentSessionForEnvironment(auth, c.env);
+  const input = parseWith(removeMailboxSchema, await readJson(c.req.raw));
+  await removeEmptyMailbox(c.env.DB, c.req.param("id"), input.confirmation);
+  await recordAudit(c.env.DB, {
+    correlationId: c.get("correlationId"),
+    actorType: "user",
+    actorId: auth.user.id,
+    action: "mailbox.delete",
+    resourceType: "mailbox",
+    resourceId: c.req.param("id"),
+    outcome: "success"
+  });
+  return c.body(null, 204);
 });
 
 mailboxRoutes.post("/:id/addresses", async (c) => {

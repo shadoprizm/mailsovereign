@@ -6,6 +6,7 @@ import type { SendingIdentity } from "./compose-fields";
 import {
   type DraftSaveState,
   normalizeDraftHtml,
+  recipientInputsAreValid,
   serializeDraft,
   splitRecipients
 } from "./compose-state";
@@ -16,7 +17,7 @@ type DraftAutosaveOptions = {
   initialized: React.RefObject<boolean>;
   draft: Draft | null;
   identities: SendingIdentity[];
-  recoveryKey: string;
+  recoveryKey: string | null;
   replyToMessageId: string | null;
   forwardOfMessageId: string | null;
   from: string;
@@ -26,6 +27,8 @@ type DraftAutosaveOptions = {
   subject: string;
   text: string;
   html: string;
+  signatureMode: Draft["signatureMode"];
+  signatureId: string | null;
   setDraft: React.Dispatch<React.SetStateAction<Draft | null>>;
   setSaveState: React.Dispatch<React.SetStateAction<DraftSaveState>>;
 };
@@ -46,6 +49,8 @@ export function useDraftAutosave(options: DraftAutosaveOptions) {
     subject,
     text,
     html,
+    signatureMode,
+    signatureId,
     setDraft,
     setSaveState
   } = options;
@@ -63,7 +68,9 @@ export function useDraftAutosave(options: DraftAutosaveOptions) {
       initial.bcc.join(", "),
       initial.subject,
       initial.text,
-      initial.html
+      initial.html,
+      initial.signatureMode,
+      initial.signatureId
     );
     latestSnapshot.current = lastSaved.current;
   }, []);
@@ -73,19 +80,57 @@ export function useDraftAutosave(options: DraftAutosaveOptions) {
   }, []);
 
   React.useEffect(() => {
-    if (!open || !initialized.current) return;
+    if (!open || !recoveryKey || !initialized.current) return;
     localStorage.setItem(
       recoveryKey,
-      JSON.stringify({ from, to, cc, bcc, subject, text, html, savedAt: Date.now() })
+      JSON.stringify({
+        from,
+        to,
+        cc,
+        bcc,
+        subject,
+        text,
+        html,
+        signatureMode,
+        signatureId,
+        savedAt: Date.now()
+      })
     );
-  }, [open, initialized, recoveryKey, from, to, cc, bcc, subject, text, html]);
+  }, [
+    open,
+    initialized,
+    recoveryKey,
+    from,
+    to,
+    cc,
+    bcc,
+    subject,
+    text,
+    html,
+    signatureMode,
+    signatureId
+  ]);
 
   React.useEffect(() => {
     if (!open || !draft || !initialized.current) return;
-    const snapshot = serializeDraft(from, to, cc, bcc, subject, text, html);
+    const snapshot = serializeDraft(
+      from,
+      to,
+      cc,
+      bcc,
+      subject,
+      text,
+      html,
+      signatureMode,
+      signatureId
+    );
     latestSnapshot.current = snapshot;
     if (snapshot === lastSaved.current) {
       setSaveState("saved");
+      return;
+    }
+    if (!recipientInputsAreValid(to, cc, bcc)) {
+      setSaveState("editing-recipient");
       return;
     }
     setSaveState("saving");
@@ -106,6 +151,8 @@ export function useDraftAutosave(options: DraftAutosaveOptions) {
             mailboxId: identities.find((identity) => identity.address === from)?.mailboxId ?? null,
             replyToMessageId,
             forwardOfMessageId,
+            signatureMode,
+            signatureId,
             from,
             to: splitRecipients(to),
             cc: splitRecipients(cc),
@@ -117,7 +164,7 @@ export function useDraftAutosave(options: DraftAutosaveOptions) {
           });
           draftRef.current = next;
           lastSaved.current = snapshot;
-          localStorage.removeItem(recoveryKey);
+          if (recoveryKey) localStorage.removeItem(recoveryKey);
           setDraft(next);
           setSaveState(latestSnapshot.current === snapshot ? "saved" : "saving");
         } catch (error) {
@@ -138,6 +185,8 @@ export function useDraftAutosave(options: DraftAutosaveOptions) {
     subject,
     text,
     html,
+    signatureMode,
+    signatureId,
     replyToMessageId,
     forwardOfMessageId,
     identities,

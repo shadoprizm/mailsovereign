@@ -22,7 +22,7 @@ export async function notifyInboundMessage(env: WorkerEnv, message: MessageSumma
   if (subscriptions.length === 0) return;
 
   webpush.setVapidDetails(
-    env.VAPID_SUBJECT ?? "https://hqbase.io",
+    env.VAPID_SUBJECT ?? "https://mailsovereign.com",
     env.VAPID_PUBLIC_KEY,
     env.VAPID_PRIVATE_KEY
   );
@@ -37,7 +37,7 @@ export async function notifyInboundMessage(env: WorkerEnv, message: MessageSumma
       if (!mailboxIds.includes(mailboxId)) return;
       const unread = await countUnreadMessages(env.DB, mailboxIds);
       const payload = JSON.stringify({
-        tag: `hqbase-thread-${message.threadId}`,
+        tag: `sovereign-mail-thread-${message.threadId}`,
         unreadCount: unread.total,
         url: message.folder === "catchall" ? `/catch-all/${message.id}` : `/inbox/${message.id}`
       });

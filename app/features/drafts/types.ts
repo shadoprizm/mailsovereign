@@ -10,6 +10,8 @@ export type Draft = {
   mailboxId: string | null;
   replyToMessageId: string | null;
   forwardOfMessageId: string | null;
+  signatureMode: "default" | "specific" | "none";
+  signatureId: string | null;
   from: string;
   to: string[];
   cc: string[];

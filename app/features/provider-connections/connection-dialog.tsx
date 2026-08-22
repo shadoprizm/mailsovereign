@@ -15,21 +15,28 @@ import {
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import { createProviderConnection } from "./api";
+import { createProviderConnection, verifyProviderConnection } from "./api";
+import { MailServiceField } from "./mail-service-field";
+import {
+  applyMailServicePreset,
+  connectionIdSuggestion,
+  detectMailService,
+  getMailServicePreset,
+  type MailServerFields,
+  type MailServiceId
+} from "./mail-service-presets";
 import type { CreateProviderConnectionInput, ProviderConnection } from "./types";
 
-type ConnectionForm = {
+type ConnectionForm = MailServerFields & {
+  serviceId: MailServiceId;
   displayName: string;
   providerId: string;
   username: string;
   password: string;
-  imapHost: string;
-  imapPort: string;
-  smtpHost: string;
-  smtpPort: string;
 };
 
 const emptyForm: ConnectionForm = {
+  serviceId: "custom",
   displayName: "",
   providerId: "",
   username: "",
@@ -48,16 +55,81 @@ export function ProviderConnectionDialog({
   const [open, setOpen] = React.useState(false);
   const [pending, setPending] = React.useState(false);
   const [form, setForm] = React.useState<ConnectionForm>(emptyForm);
+  const selectedPreset = getMailServicePreset(form.serviceId);
 
   function update<K extends keyof ConnectionForm>(key: K, value: ConnectionForm[K]) {
     setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function selectService(serviceId: MailServiceId) {
+    const preset = getMailServicePreset(serviceId);
+    setForm((current) => {
+      if (!preset) return { ...current, serviceId };
+      const refreshProviderId =
+        !current.providerId ||
+        current.providerId === connectionIdSuggestion(current.serviceId, current.username);
+      return {
+        ...current,
+        serviceId,
+        ...applyMailServicePreset(current, preset),
+        providerId: refreshProviderId
+          ? connectionIdSuggestion(serviceId, current.username)
+          : current.providerId
+      };
+    });
+  }
+
+  function updateUsername(username: string) {
+    setForm((current) => {
+      const refreshProviderId =
+        !current.providerId ||
+        current.providerId === connectionIdSuggestion(current.serviceId, current.username);
+      const detectedService = detectMailService(username);
+      if (
+        current.serviceId !== "custom" ||
+        current.imapHost ||
+        current.smtpHost ||
+        !detectedService
+      ) {
+        return {
+          ...current,
+          username,
+          providerId: refreshProviderId
+            ? connectionIdSuggestion(current.serviceId, username)
+            : current.providerId
+        };
+      }
+      const preset = getMailServicePreset(detectedService);
+      if (!preset) return { ...current, username };
+      return {
+        ...current,
+        username,
+        serviceId: detectedService,
+        ...applyMailServicePreset(current, preset),
+        providerId: refreshProviderId
+          ? connectionIdSuggestion(detectedService, username)
+          : current.providerId
+      };
+    });
+  }
+
+  function updateServerHost(key: "imapHost" | "smtpHost", value: string) {
+    setForm((current) => {
+      const preset = getMailServicePreset(current.serviceId);
+      if (!preset?.sharedHost) return { ...current, [key]: value };
+      const otherKey = key === "imapHost" ? "smtpHost" : "imapHost";
+      const shouldMirror = !current[otherKey] || current[otherKey] === current[key];
+      return { ...current, [key]: value, ...(shouldMirror ? { [otherKey]: value } : {}) };
+    });
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const input: CreateProviderConnectionInput = {
       providerId: form.providerId.trim(),
-      displayName: form.displayName.trim(),
+      displayName:
+        form.displayName.trim() ||
+        `${selectedPreset?.label ?? "Mailbox"} · ${form.username.trim().toLowerCase()}`,
       username: form.username.trim(),
       password: form.password,
       config: {
@@ -72,8 +144,27 @@ export function ProviderConnectionDialog({
     setPending(true);
     try {
       const connection = await createProviderConnection(input);
-      onCreated(connection);
-      toast.success(`${connection.displayName} was connected.`);
+      try {
+        const verified = await verifyProviderConnection(connection.providerId);
+        onCreated({
+          ...connection,
+          mailboxAddress: verified.mailboxAddress,
+          verifiedAt: verified.verifiedAt,
+          lastErrorCode: null
+        });
+        toast.success(
+          verified.syncQueued
+            ? `${verified.mailboxAddress} is ready. Its first Inbox sync was queued.`
+            : `${verified.mailboxAddress} is ready. Start an Inbox sync from Connections.`
+        );
+      } catch (error) {
+        onCreated(connection);
+        toast.error(
+          error instanceof Error
+            ? `Connection saved, but verification failed: ${error.message}`
+            : "Connection saved, but verification failed."
+        );
+      }
       setOpen(false);
       setForm(emptyForm);
     } catch (error) {
@@ -101,21 +192,22 @@ export function ProviderConnectionDialog({
       </DialogTrigger>
       <DialogContent className="max-h-[88vh] w-[min(94vw,680px)] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Connect an IMAP/SMTP mailbox</DialogTitle>
+          <DialogTitle>Connect existing email hosting</DialogTitle>
           <DialogDescription>
-            The password goes directly to your Worker, is encrypted before storage, and is never
-            returned by the API.
+            Keep your current provider, DNS, and website hosting. Sovereign Mail verifies this
+            mailbox, imports its Inbox, and uses its SMTP service when you send from this address.
           </DialogDescription>
         </DialogHeader>
         <form className="flex flex-col gap-6" onSubmit={submit}>
+          <MailServiceField serviceId={form.serviceId} onServiceChange={selectService} />
+
           <FieldGroup className="grid gap-5 sm:grid-cols-2">
             <Field>
-              <FieldLabel htmlFor="provider-display-name">Connection name</FieldLabel>
+              <FieldLabel htmlFor="provider-display-name">Connection name (optional)</FieldLabel>
               <Input
                 autoComplete="off"
                 id="provider-display-name"
-                placeholder="Primary MXRoute mailbox"
-                required
+                placeholder={selectedPreset ? `${selectedPreset.label} mailbox` : "Primary mailbox"}
                 value={form.displayName}
                 onChange={(event) => update("displayName", event.target.value)}
               />
@@ -146,7 +238,7 @@ export function ProviderConnectionDialog({
                 required
                 type="email"
                 value={form.username}
-                onChange={(event) => update("username", event.target.value)}
+                onChange={(event) => updateUsername(event.target.value)}
               />
             </Field>
             <Field className="sm:col-span-2">
@@ -160,7 +252,8 @@ export function ProviderConnectionDialog({
                 onChange={(event) => update("password", event.target.value)}
               />
               <FieldDescription>
-                Enter this only here. Do not paste mailbox passwords into chat.
+                {selectedPreset?.passwordHelp ??
+                  "Enter this only here. Do not paste mailbox passwords into chat."}
               </FieldDescription>
             </Field>
           </FieldGroup>
@@ -172,10 +265,12 @@ export function ProviderConnectionDialog({
                 autoCapitalize="none"
                 autoComplete="off"
                 id="provider-imap-host"
-                placeholder="imap.example.com"
+                placeholder={
+                  form.serviceId === "mxroute" ? "your-server.mxlogin.com" : "imap.example.com"
+                }
                 required
                 value={form.imapHost}
-                onChange={(event) => update("imapHost", event.target.value)}
+                onChange={(event) => updateServerHost("imapHost", event.target.value)}
               />
             </Field>
             <Field>
@@ -199,7 +294,7 @@ export function ProviderConnectionDialog({
                 placeholder="smtp.example.com"
                 required
                 value={form.smtpHost}
-                onChange={(event) => update("smtpHost", event.target.value)}
+                onChange={(event) => updateServerHost("smtpHost", event.target.value)}
               />
             </Field>
             <Field>
@@ -224,7 +319,7 @@ export function ProviderConnectionDialog({
             </DialogClose>
             <Button disabled={pending} type="submit">
               {pending ? <Spinner data-icon="inline-start" /> : null}
-              {pending ? "Saving…" : "Save connection"}
+              {pending ? "Connecting…" : "Connect and verify"}
             </Button>
           </DialogFooter>
         </form>

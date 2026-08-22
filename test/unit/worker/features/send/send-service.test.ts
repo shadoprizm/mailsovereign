@@ -71,15 +71,20 @@ describe("send service", () => {
     ASSETS: {} as Fetcher,
     BETTER_AUTH_SECRET: "test-secret",
     CLOUDFLARE_OAUTH_CLIENT_ID: "1c413f324b518b452096929b847e6703",
-    DB: {} as D1Database,
-    HQBASE_APP_VERSION: "0.1.3",
-    HQBASE_RELEASE_PUBLIC_KEY: "MCowBQYDK2VwAyEAsVwKniCvpHDwbbnjTPP0SuIIG97cRL+iFBQvay9OrU4=",
-    HQBASE_RELEASE_MANIFEST_URL:
-      "https://github.com/HQBase/hqbase/releases/latest/download/stable.json",
-    HQBASE_WORKER_NAME: "hqbase",
+    DB: {
+      prepare: vi.fn(() => ({
+        bind: vi.fn(() => ({ first: vi.fn().mockResolvedValue(null) }))
+      }))
+    } as unknown as D1Database,
+    SOVEREIGN_MAIL_APP_VERSION: "0.1.3",
+    SOVEREIGN_MAIL_RELEASE_PUBLIC_KEY:
+      "MCowBQYDK2VwAyEAsVwKniCvpHDwbbnjTPP0SuIIG97cRL+iFBQvay9OrU4=",
+    SOVEREIGN_MAIL_RELEASE_MANIFEST_URL:
+      "https://github.com/shadoprizm/mailsovereign/releases/latest/download/stable.json",
+    SOVEREIGN_MAIL_WORKER_NAME: "sovereign-mail",
     MAIL_OBJECTS: { get, put } as unknown as R2Bucket,
     MAIL_SENDER: { send } as unknown as SendEmail,
-    HQBASE_JOBS: {} as Queue
+    SOVEREIGN_MAIL_JOBS: {} as Queue
   } satisfies WorkerEnv;
 
   beforeEach(() => {

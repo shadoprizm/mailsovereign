@@ -19,7 +19,7 @@ describe("local database seed", () => {
 
     expect(sql).toContain("'local_seed_version', '\"local-demo-v1\"'");
     expect(sql).toContain("'setup_complete', 'true'");
-    expect(sql).toContain("'owner@hqbase.test'");
+    expect(sql).toContain("'owner@sovereign-mail.test'");
     expect(sql).toContain("'support@example.test'");
     expect(sql).toContain("'msg_local_project_inbound'");
     expect(sql).toContain("'drf_local_followup'");

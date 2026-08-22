@@ -6,17 +6,18 @@ import { resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 
 const root = resolve(import.meta.dirname, "../..");
-const product = "hqbase";
-const schemaVersion = 2;
+const product = "sovereign-mail";
+const schemaVersion = 20;
 const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
-const version = process.env.HQBASE_RELEASE_VERSION ?? packageJson.version;
-const minVersion = process.env.HQBASE_MIN_VERSION || packageJson.hqbaseRelease?.minimumVersion;
+const version = process.env.SOVEREIGN_MAIL_RELEASE_VERSION ?? packageJson.version;
+const minVersion =
+  process.env.SOVEREIGN_MAIL_MIN_VERSION || packageJson.sovereignMailRelease?.minimumVersion;
 const changelog = readFileSync(resolve(root, "CHANGELOG.md"), "utf8");
-const privateKeyValue = process.env.HQBASE_RELEASE_PRIVATE_KEY_FILE
-  ? readFileSync(process.env.HQBASE_RELEASE_PRIVATE_KEY_FILE, "utf8")
-  : process.env.HQBASE_RELEASE_PRIVATE_KEY;
+const privateKeyValue = process.env.SOVEREIGN_MAIL_RELEASE_PRIVATE_KEY_FILE
+  ? readFileSync(process.env.SOVEREIGN_MAIL_RELEASE_PRIVATE_KEY_FILE, "utf8")
+  : process.env.SOVEREIGN_MAIL_RELEASE_PRIVATE_KEY;
 
-if (!privateKeyValue) throw new Error("HQBASE_RELEASE_PRIVATE_KEY is required.");
+if (!privateKeyValue) throw new Error("SOVEREIGN_MAIL_RELEASE_PRIVATE_KEY is required.");
 if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version))
   throw new Error("Release version must be semantic.");
 if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(minVersion ?? ""))
@@ -34,20 +35,20 @@ rmSync(tarFile);
 
 const bytes = readFileSync(artifactFile);
 const manifest = {
-  format: "hqbase-release-v1",
+  format: "sovereign-mail-release-v1",
   product,
   channel: "stable",
   version,
   schemaVersion,
   minVersion,
   publishedAt: new Date().toISOString(),
-  notesUrl: `https://github.com/HQBase/hqbase/releases/tag/v${version}`,
+  notesUrl: `https://github.com/shadoprizm/mailsovereign/releases/tag/v${version}`,
   artifact: {
-    url: `https://github.com/HQBase/hqbase/releases/download/v${version}/hqbase-${version}.tar.gz`,
+    url: `https://github.com/shadoprizm/mailsovereign/releases/download/v${version}/sovereign-mail-${version}.tar.gz`,
     sha256: createHash("sha256").update(bytes).digest("hex"),
     size: statSync(artifactFile).size
   },
-  keyId: "hqbase-release-2026-01"
+  keyId: "sovereign-mail-release-2026-01"
 };
 const payload = Buffer.from(JSON.stringify(manifest)).toString("base64url");
 const signature = sign(
@@ -59,8 +60,8 @@ const envelope = `${JSON.stringify({ payload, signature })}\n`;
 writeFileSync(resolve(output, `manifest-${version}.json`), envelope);
 writeFileSync(resolve(output, "stable.json"), envelope);
 writeFileSync(
-  resolve(output, `hqbase-${version}.sha256`),
-  `${manifest.artifact.sha256}  hqbase-${version}.tar.gz\n`
+  resolve(output, `sovereign-mail-${version}.sha256`),
+  `${manifest.artifact.sha256}  sovereign-mail-${version}.tar.gz\n`
 );
 
 console.log(

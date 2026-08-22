@@ -11,9 +11,13 @@ export type ProviderConnection = {
   providerId: string;
   kind: "imap-smtp";
   displayName: string;
+  mailboxAddress: string | null;
   config: ProviderConnectionConfig;
   credentialKeyVersion: number;
   isEnabled: boolean;
+  verifiedAt: string | null;
+  lastSyncedAt: string | null;
+  lastErrorCode: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -29,6 +33,9 @@ export type CreateProviderConnectionInput = {
 export type ProviderConnectionVerification = {
   imap: boolean;
   smtp: boolean;
+  mailboxAddress: string;
+  verifiedAt: string;
+  syncQueued: boolean;
 };
 
 export type ProviderSyncRequest = {

@@ -45,7 +45,7 @@ export async function attachmentResult(
         {
           type: "resource",
           resource: {
-            uri: `hqbase://attachments/${attachment.id}/${encodeURIComponent(attachment.filename)}`,
+            uri: `sovereign-mail://attachments/${attachment.id}/${encodeURIComponent(attachment.filename)}`,
             mimeType: attachment.contentType,
             blob: bytesToBase64(new Uint8Array(await object.arrayBuffer()))
           }

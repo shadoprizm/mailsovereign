@@ -2,6 +2,7 @@ import { apiGet, apiPost } from "@/lib/api-client";
 import type {
   BootstrapSetupInput,
   CloudflareAccessStatus,
+  CloudflareAccount,
   CloudflareConfigureResult,
   CloudflareDomainStatus,
   CloudflareZone,
@@ -23,6 +24,25 @@ export async function verifyCloudflareAccess(): Promise<CloudflareAccessStatus> 
 export async function listCloudflareZones(): Promise<CloudflareZone[]> {
   const response = await apiPost<{ zones: CloudflareZone[] }>("/api/setup/cloudflare/zones", {});
   return response.zones;
+}
+
+export async function listCloudflareAccounts(): Promise<CloudflareAccount[]> {
+  const response = await apiPost<{ accounts: CloudflareAccount[] }>(
+    "/api/setup/cloudflare/accounts",
+    {}
+  );
+  return response.accounts;
+}
+
+export async function createCloudflareZone(input: {
+  accountId: string;
+  name: string;
+}): Promise<CloudflareZone> {
+  return apiPost<CloudflareZone>("/api/setup/cloudflare/zones/create", input);
+}
+
+export async function refreshCloudflareZone(zoneId: string): Promise<CloudflareZone> {
+  return apiPost<CloudflareZone>("/api/setup/cloudflare/zones/status", { zoneId });
 }
 
 export async function inspectCloudflareDomain(input: {

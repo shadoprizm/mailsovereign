@@ -2,8 +2,9 @@ import { z } from "zod";
 
 import { AppError } from "../../lib/errors";
 
-import { cloudflareRequest, cloudflareRequestResult } from "./cloudflare-api";
+import { cloudflareRequestResult } from "./cloudflare-api";
 import { inspectCatchAll, inspectRouting, inspectSending } from "./cloudflare-status";
+import { cloudflareZoneSchema, mapCloudflareZone } from "./cloudflare-zones";
 import type {
   CloudflareConfigureResult,
   CloudflareDomainStatus,
@@ -11,11 +12,19 @@ import type {
   CloudflareZone
 } from "./types";
 
-const DEFAULT_WORKER_NAME = "hqbase";
+export {
+  createCloudflareZone,
+  getCloudflareZone,
+  listCloudflareAccounts,
+  listCloudflareZones
+} from "./cloudflare-zones";
+
+const DEFAULT_WORKER_NAME = "sovereign-mail";
 
 type CloudflareInput = { apiToken: string };
 
 type CloudflareZoneInput = CloudflareInput & {
+  requireSending?: boolean | undefined;
   zoneId: string;
   workerName?: string | undefined;
 };
@@ -23,22 +32,9 @@ type CloudflareZoneInput = CloudflareInput & {
 type CloudflareConfigureInput = CloudflareZoneInput & {
   appHostname?: string | undefined;
   attachCustomDomain?: boolean | undefined;
+  canonicalHostname?: string | undefined;
   enableSending: boolean;
 };
-
-const cloudflareZoneSchema = z.object({
-  account: z
-    .object({
-      id: z.string().nullable().optional(),
-      name: z.string().nullable().optional()
-    })
-    .nullable()
-    .optional(),
-  id: z.string(),
-  name: z.string(),
-  status: z.string(),
-  type: z.string().nullable().optional()
-});
 
 const tokenStatusSchema = z.object({
   id: z.string(),
@@ -90,38 +86,20 @@ export async function verifyCloudflareToken(
   }
 }
 
-export async function listCloudflareZones(input: CloudflareInput): Promise<CloudflareZone[]> {
-  const zones: CloudflareZone[] = [];
-  let page = 1;
-  let totalPages = 1;
-
-  while (page <= totalPages && page <= 5) {
-    const response = await cloudflareRequest(
-      input.apiToken,
-      `/zones?${new URLSearchParams({ page: String(page), per_page: "100" })}`,
-      z.array(cloudflareZoneSchema)
-    );
-
-    zones.push(...response.result.map(mapZone));
-    totalPages = response.resultInfo?.totalPages ?? page;
-    page += 1;
-  }
-
-  return zones.sort((a, b) => a.name.localeCompare(b.name));
-}
-
 export async function inspectCloudflareDomain(
   input: CloudflareZoneInput
 ): Promise<CloudflareDomainStatus> {
   const workerName = normalizeWorkerName(input.workerName);
-  const zone = mapZone(
+  const zone = mapCloudflareZone(
     await cloudflareRequestResult(input.apiToken, `/zones/${input.zoneId}`, cloudflareZoneSchema)
   );
 
   const [routing, catchAll, sending] = await Promise.all([
     inspectRouting(input.apiToken, zone.id),
     inspectCatchAll(input.apiToken, zone.id, workerName),
-    inspectSending(input.apiToken, zone.id)
+    input.requireSending === false
+      ? Promise.resolve({ enabled: false, error: null, subdomains: [] })
+      : inspectSending(input.apiToken, zone.id)
   ]);
 
   const ready =
@@ -130,7 +108,7 @@ export async function inspectCloudflareDomain(
     routing.dnsReady &&
     catchAll.enabled &&
     catchAll.configuredForWorker &&
-    sending.enabled;
+    (input.requireSending === false || sending.enabled);
 
   return {
     catchAll,
@@ -146,7 +124,7 @@ export async function configureCloudflareDomain(
   input: CloudflareConfigureInput
 ): Promise<CloudflareConfigureResult> {
   const workerName = normalizeWorkerName(input.workerName);
-  const zone = mapZone(
+  const zone = mapCloudflareZone(
     await cloudflareRequestResult(input.apiToken, `/zones/${input.zoneId}`, cloudflareZoneSchema)
   );
   if (zone.status !== "active") {
@@ -159,15 +137,24 @@ export async function configureCloudflareDomain(
 
   const steps: CloudflareStep[] = [];
   if (input.attachCustomDomain && input.appHostname) {
-    await recordStep(steps, "custom-domain", "Attach app URL", async () => {
-      const domain = await attachWorkerCustomDomain({
-        apiToken: input.apiToken,
-        hostname: input.appHostname as string,
-        workerName,
-        zone
+    if (sameHostname(input.appHostname, input.canonicalHostname)) {
+      steps.push({
+        id: "custom-domain",
+        label: "Attach app URL",
+        message: `${input.appHostname} is already serving this Sovereign Mail deployment.`,
+        status: "success"
       });
-      return `${domain.hostname} now routes to Worker ${domain.service}.`;
-    });
+    } else {
+      await recordStep(steps, "custom-domain", "Attach app URL", async () => {
+        const domain = await attachWorkerCustomDomain({
+          apiToken: input.apiToken,
+          hostname: input.appHostname as string,
+          workerName,
+          zone
+        });
+        return `${domain.hostname} now routes to Worker ${domain.service}.`;
+      });
+    }
   } else {
     steps.push({
       id: "custom-domain",
@@ -237,11 +224,21 @@ export async function configureCloudflareDomain(
   return {
     status: await inspectCloudflareDomain({
       apiToken: input.apiToken,
+      requireSending: input.enableSending,
       workerName,
       zoneId: zone.id
     }),
     steps
   };
+}
+
+function sameHostname(first: string | undefined, second: string | undefined): boolean {
+  if (!first || !second) return false;
+  return normalizeHostname(first) === normalizeHostname(second);
+}
+
+function normalizeHostname(value: string): string {
+  return value.trim().toLowerCase().replace(/\.$/, "");
 }
 
 export async function attachWorkerCustomDomain(input: {
@@ -285,17 +282,6 @@ export async function attachWorkerCustomDomain(input: {
       method: "PUT"
     }
   );
-}
-
-function mapZone(zone: z.infer<typeof cloudflareZoneSchema>): CloudflareZone {
-  return {
-    accountId: zone.account?.id ?? null,
-    accountName: zone.account?.name ?? null,
-    id: zone.id,
-    name: zone.name,
-    status: zone.status,
-    type: zone.type ?? null
-  };
 }
 
 async function recordStep(

@@ -1,3 +1,4 @@
+import { mergeAttributes, Node } from "@tiptap/core";
 import Placeholder from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -19,12 +20,14 @@ export function RichEmailEditor({
   contained = true,
   html,
   onChange,
-  onFiles
+  onFiles,
+  placeholder = "Write your message…"
 }: {
   contained?: boolean;
   html: string;
   onChange: (html: string, text: string) => void;
-  onFiles: (files: File[]) => void;
+  onFiles?: (files: File[]) => void;
+  placeholder?: string;
 }) {
   const onChangeRef = React.useRef(onChange);
   const onFilesRef = React.useRef(onFiles);
@@ -36,7 +39,8 @@ export function RichEmailEditor({
     {
       extensions: [
         StarterKit.configure({ link: { openOnClick: false } }),
-        Placeholder.configure({ placeholder: "Write your message…" })
+        EmailSignature,
+        Placeholder.configure({ placeholder })
       ],
       content: html,
       editorProps: {
@@ -48,19 +52,21 @@ export function RichEmailEditor({
         handleDrop: (_view, event) => {
           const files = Array.from(event.dataTransfer?.files ?? []);
           if (files.length === 0) return false;
+          if (!onFilesRef.current) return false;
           onFilesRef.current(files);
           return true;
         },
         handlePaste: (_view, event) => {
           const files = Array.from(event.clipboardData?.files ?? []);
           if (files.length === 0) return false;
+          if (!onFilesRef.current) return false;
           onFilesRef.current(files);
           return true;
         }
       },
       onUpdate: ({ editor: value }) => onChangeRef.current(value.getHTML(), value.getText())
     },
-    []
+    [placeholder]
   );
   React.useEffect(() => {
     if (editor && editor.getHTML() !== html)
@@ -128,6 +134,29 @@ export function RichEmailEditor({
     </div>
   );
 }
+
+const EmailSignature = Node.create({
+  name: "emailSignature",
+  group: "block",
+  content: "block+",
+  defining: true,
+  addAttributes() {
+    return {
+      signatureId: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-email-signature"),
+        renderHTML: (attributes) =>
+          attributes.signatureId ? { "data-email-signature": attributes.signatureId } : {}
+      }
+    };
+  },
+  parseHTML() {
+    return [{ tag: "div[data-email-signature]" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["div", mergeAttributes(HTMLAttributes), 0];
+  }
+});
 function Tool({
   active = false,
   children,

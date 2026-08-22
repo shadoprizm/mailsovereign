@@ -12,7 +12,10 @@ import {
 
 import {
   configureCloudflareDomain,
+  createCloudflareZone,
+  getCloudflareZone,
   inspectCloudflareDomain,
+  listCloudflareAccounts,
   listCloudflareZones,
   verifyCloudflareToken
 } from "./cloudflare";
@@ -21,7 +24,9 @@ import { bootstrapSetup } from "./service";
 import {
   bootstrapSetupSchema,
   configureCloudflareDomainSchema,
+  createCloudflareZoneSchema,
   inspectCloudflareDomainSchema,
+  listCloudflareAccountsSchema,
   listCloudflareZonesSchema,
   verifyCloudflareAccessSchema
 } from "./validation";
@@ -55,6 +60,37 @@ setupRoutes.post("/cloudflare/zones", async (c) => {
   });
 });
 
+setupRoutes.post("/cloudflare/accounts", async (c) => {
+  const input = parseWith(listCloudflareAccountsSchema, await readJson(c.req.raw));
+  return c.json({
+    accounts: await listCloudflareAccounts({
+      ...input,
+      apiToken: await resolveRuntimeCloudflareGrant(c.req.raw, c.env)
+    })
+  });
+});
+
+setupRoutes.post("/cloudflare/zones/create", async (c) => {
+  const input = parseWith(createCloudflareZoneSchema, await readJson(c.req.raw));
+  return c.json(
+    await createCloudflareZone({
+      ...input,
+      apiToken: await resolveRuntimeCloudflareGrant(c.req.raw, c.env)
+    }),
+    201
+  );
+});
+
+setupRoutes.post("/cloudflare/zones/status", async (c) => {
+  const input = parseWith(inspectCloudflareDomainSchema, await readJson(c.req.raw));
+  return c.json(
+    await getCloudflareZone({
+      apiToken: await resolveRuntimeCloudflareGrant(c.req.raw, c.env),
+      zoneId: input.zoneId
+    })
+  );
+});
+
 setupRoutes.post("/cloudflare/access", async (c) => {
   const input = parseWith(verifyCloudflareAccessSchema, await readJson(c.req.raw));
   return c.json(
@@ -71,7 +107,7 @@ setupRoutes.post("/cloudflare/inspect", async (c) => {
     await inspectCloudflareDomain({
       ...input,
       apiToken: await resolveRuntimeCloudflareGrant(c.req.raw, c.env),
-      workerName: c.env.HQBASE_WORKER_NAME ?? input.workerName
+      workerName: c.env.SOVEREIGN_MAIL_WORKER_NAME ?? input.workerName
     })
   );
 });
@@ -82,7 +118,8 @@ setupRoutes.post("/cloudflare/configure", async (c) => {
     await configureCloudflareDomain({
       ...input,
       apiToken: await resolveRuntimeCloudflareGrant(c.req.raw, c.env),
-      workerName: c.env.HQBASE_WORKER_NAME ?? input.workerName
+      canonicalHostname: canonicalHostname(c.env.BETTER_AUTH_URL),
+      workerName: c.env.SOVEREIGN_MAIL_WORKER_NAME ?? input.workerName
     })
   );
 });
@@ -95,3 +132,12 @@ setupRoutes.post("/bootstrap", async (c) => {
   c.header("set-cookie", clearRuntimeCloudflareGrantCookie());
   return c.json(result, 201);
 });
+
+function canonicalHostname(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return undefined;
+  }
+}

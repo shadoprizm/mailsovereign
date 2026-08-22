@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "@/lib/api-client";
+import { apiDelete, apiGet, apiPost } from "@/lib/api-client";
 import type {
   CreateProviderConnectionInput,
   ProviderConnection,
@@ -12,6 +12,9 @@ export const listProviderConnections = () => apiGet<ProviderConnection[]>(basePa
 
 export const createProviderConnection = (input: CreateProviderConnectionInput) =>
   apiPost<ProviderConnection>(basePath, input);
+
+export const deleteProviderConnection = (providerId: string) =>
+  apiDelete(`${basePath}/${encodeURIComponent(providerId)}`);
 
 export const verifyProviderConnection = (providerId: string) =>
   apiPost<ProviderConnectionVerification>(`${basePath}/${encodeURIComponent(providerId)}/verify`);

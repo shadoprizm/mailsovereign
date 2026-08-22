@@ -5,13 +5,20 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { CloudflareAuthorizationDialog } from "@/features/settings/cloudflare-authorization-dialog";
+import { ConfirmedRemovalDialog } from "@/features/settings/confirmed-removal-dialog";
 import { SettingsSection } from "@/features/settings/settings-section";
-import { changePortal, listDomains, revokeCloudflareAuthorization, updateDomain } from "./api";
+import {
+  changePortal,
+  listDomains,
+  removeDomain,
+  revokeCloudflareAuthorization,
+  updateDomain
+} from "./api";
 import { ConnectDomainDialog } from "./connect-domain-dialog";
 import { DomainTable } from "./domain-table";
 import type { MailDomain } from "./types";
 
-const PENDING_OPERATION_KEY = "hqb_cloudflare_operation_v1";
+const PENDING_OPERATION_KEY = "sovereign_mail_cloudflare_operation_v1";
 
 type PendingCloudflareOperation =
   | { action: "connect" }
@@ -32,6 +39,7 @@ export function DomainSettings({
   const [authorizationOperation, setAuthorizationOperation] =
     React.useState<PendingCloudflareOperation | null>(null);
   const [pendingDomainId, setPendingDomainId] = React.useState<string | null>(null);
+  const [removalDomain, setRemovalDomain] = React.useState<MailDomain | null>(null);
   const resumedRef = React.useRef(false);
 
   const refresh = React.useCallback(
@@ -149,13 +157,37 @@ export function DomainSettings({
           }}
         />
       }
-      description="Domains group infrastructure; access remains attached to mailboxes"
+      description="Provider-connected domains appear automatically. Direct Cloudflare delivery is optional and advanced."
       title="Email domains"
     >
       <DomainTable
         domains={domains}
         pendingDomainId={pendingDomainId}
+        onRemove={setRemovalDomain}
         onToggle={(domain) => void toggleDomain(domain)}
+      />
+
+      <ConfirmedRemovalDialog
+        confirmLabel="Remove domain"
+        description={
+          <>
+            This removes the domain record from Sovereign Mail only. DNS, MX records, Cloudflare
+            Email Routing, and external providers such as Resend stay unchanged.
+          </>
+        }
+        open={removalDomain !== null}
+        target={removalDomain?.name ?? ""}
+        title="Remove this domain?"
+        onConfirm={async () => {
+          if (!removalDomain) return;
+          await removeDomain(removalDomain.id, removalDomain.name);
+          toast.success(`${removalDomain.name} was removed from Sovereign Mail.`);
+          refresh();
+          onChanged();
+        }}
+        onOpenChange={(open) => {
+          if (!open) setRemovalDomain(null);
+        }}
       />
 
       <Separator />

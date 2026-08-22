@@ -36,7 +36,7 @@ describe("setup UI", () => {
 
   it("uses an installation timeline until Cloudflare access is ready", () => {
     const html = renderToStaticMarkup(
-      <SetupFrame description="Complete installation." title="Set up HQBase">
+      <SetupFrame description="Complete installation." title="Set up Sovereign Mail">
         <WizardLayout activePhase={2} activeStep={0} steps={[]}>
           <AccessStep error={null} isLoading onNext={() => undefined} />
         </WizardLayout>
@@ -75,7 +75,7 @@ describe("setup UI", () => {
     expect(html).toContain('aria-label="Domain: complete"');
     expect(html).toContain('aria-label="Mailboxes: active"');
     expect(html).not.toContain("<header");
-    expect(html).not.toContain(">HQBase</span>");
+    expect(html).not.toContain(">Sovereign Mail</span>");
     expect(html).toContain("Configure workspace");
     expect(html).toContain("Domain");
     expect(html).toContain("Owner account");

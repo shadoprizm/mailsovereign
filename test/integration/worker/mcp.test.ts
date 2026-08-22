@@ -8,15 +8,16 @@ import conversationMigration from "../../../migrations/0004_conversations.sql?ra
 import threadRebuildMigration from "../../../migrations/0005_rebuild_threads.sql?raw";
 import userOnboardingMigration from "../../../migrations/0008_user_onboarding.sql?raw";
 import loginEmailDomainMigration from "../../../migrations/0009_login_email_domain_isolation.sql?raw";
+import emailSignaturesMigration from "../../../migrations/0015_email_signatures.sql?raw";
 import { hashOAuthToken } from "../../../worker/auth/oauth-token";
 import { migrationStatements } from "./migration-statements";
 
-const origin = "https://hqbase.test";
+const origin = "https://sovereign-mail.test";
 const userId = "usr_mcp_member";
 const sessionId = "ses_mcp_member";
-const readToken = "hqb_access_mcp-hqbase-read-token";
-const readProfileFullToken = "hqb_access_mcp-hqbase-read-profile-full-token";
-const fullToken = "hqb_access_mcp-hqbase-full-token";
+const readToken = "sovereign_mail_access_mcp-sovereign-mail-read-token";
+const readProfileFullToken = "sovereign_mail_access_mcp-sovereign-mail-read-profile-full-token";
+const fullToken = "sovereign_mail_access_mcp-sovereign-mail-full-token";
 const fullScopes = ["mail:read", "mail:write", "mail:send"];
 const readToolNames = [
   "list_mailboxes",
@@ -27,7 +28,7 @@ const readToolNames = [
   "get_attachment"
 ];
 
-describe("HQBase MCP server", () => {
+describe("Sovereign Mail MCP server", () => {
   beforeAll(async () => {
     for (const migration of [
       initialMigration,
@@ -36,14 +37,17 @@ describe("HQBase MCP server", () => {
       conversationMigration,
       threadRebuildMigration,
       userOnboardingMigration,
-      loginEmailDomainMigration
+      loginEmailDomainMigration,
+      emailSignaturesMigration
     ]) {
       await applyMigration(migration);
     }
     const now = new Date();
-    const storedReadToken = await hashOAuthToken("mcp-hqbase-read-token");
-    const storedReadProfileFullToken = await hashOAuthToken("mcp-hqbase-read-profile-full-token");
-    const storedFullToken = await hashOAuthToken("mcp-hqbase-full-token");
+    const storedReadToken = await hashOAuthToken("mcp-sovereign-mail-read-token");
+    const storedReadProfileFullToken = await hashOAuthToken(
+      "mcp-sovereign-mail-read-profile-full-token"
+    );
+    const storedFullToken = await hashOAuthToken("mcp-sovereign-mail-full-token");
     await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO "user"
@@ -63,7 +67,7 @@ describe("HQBase MCP server", () => {
       ).bind(
         sessionId,
         new Date(now.getTime() + 60 * 60 * 1000).toISOString(),
-        "session-token-mcp-hqbase",
+        "session-token-mcp-sovereign-mail",
         now.toISOString(),
         now.toISOString(),
         userId
@@ -98,7 +102,7 @@ describe("HQBase MCP server", () => {
       env.DB.prepare(
         `INSERT INTO oauthClient
          (id, clientId, disabled, redirectUris, public, requirePKCE, createdAt, updatedAt)
-         VALUES ('oc_mcp_hqbase', 'client_mcp_hqbase', 0, ?, 1, 1, ?, ?)`
+         VALUES ('oc_mcp_sovereign-mail', 'client_mcp_sovereign-mail', 0, ?, 1, 1, ?, ?)`
       ).bind(
         JSON.stringify(["https://client.example/callback"]),
         now.toISOString(),
@@ -107,7 +111,7 @@ describe("HQBase MCP server", () => {
       env.DB.prepare(
         `INSERT INTO oauthConsent
          (id, clientId, userId, scopes, resources, createdAt, updatedAt)
-         VALUES ('consent_mcp_hqbase', 'client_mcp_hqbase', ?, ?, ?, ?, ?)`
+         VALUES ('consent_mcp_sovereign-mail', 'client_mcp_sovereign-mail', ?, ?, ?, ?, ?)`
       ).bind(
         userId,
         JSON.stringify(fullScopes),
@@ -118,7 +122,7 @@ describe("HQBase MCP server", () => {
       env.DB.prepare(
         `INSERT INTO oauthAccessToken
          (id, token, clientId, sessionId, userId, expiresAt, createdAt, scopes, resources)
-         VALUES ('access_mcp_hqbase', ?, 'client_mcp_hqbase', ?, ?, ?, ?, ?, ?)`
+         VALUES ('access_mcp_sovereign-mail', ?, 'client_mcp_sovereign-mail', ?, ?, ?, ?, ?, ?)`
       ).bind(
         storedReadToken,
         sessionId,
@@ -131,7 +135,7 @@ describe("HQBase MCP server", () => {
       env.DB.prepare(
         `INSERT INTO oauthAccessToken
          (id, token, clientId, sessionId, userId, expiresAt, createdAt, scopes, resources)
-         VALUES ('access_mcp_hqbase_read_profile_full', ?, 'client_mcp_hqbase', ?, ?, ?, ?, ?, ?)`
+         VALUES ('access_mcp_sovereign-mail_read_profile_full', ?, 'client_mcp_sovereign-mail', ?, ?, ?, ?, ?, ?)`
       ).bind(
         storedReadProfileFullToken,
         sessionId,
@@ -144,7 +148,7 @@ describe("HQBase MCP server", () => {
       env.DB.prepare(
         `INSERT INTO oauthClient
          (id, clientId, disabled, redirectUris, public, requirePKCE, createdAt, updatedAt)
-         VALUES ('oc_mcp_hqbase_full', 'client_mcp_hqbase_full', 0, ?, 1, 1, ?, ?)`
+         VALUES ('oc_mcp_sovereign-mail_full', 'client_mcp_sovereign-mail_full', 0, ?, 1, 1, ?, ?)`
       ).bind(
         JSON.stringify(["https://client.example/full-callback"]),
         now.toISOString(),
@@ -153,7 +157,7 @@ describe("HQBase MCP server", () => {
       env.DB.prepare(
         `INSERT INTO oauthConsent
          (id, clientId, userId, scopes, resources, createdAt, updatedAt)
-         VALUES ('consent_mcp_hqbase_full', 'client_mcp_hqbase_full', ?, ?, ?, ?, ?)`
+         VALUES ('consent_mcp_sovereign-mail_full', 'client_mcp_sovereign-mail_full', ?, ?, ?, ?, ?)`
       ).bind(
         userId,
         JSON.stringify(fullScopes),
@@ -164,7 +168,7 @@ describe("HQBase MCP server", () => {
       env.DB.prepare(
         `INSERT INTO oauthAccessToken
          (id, token, clientId, sessionId, userId, expiresAt, createdAt, scopes, resources)
-         VALUES ('access_mcp_hqbase_full', ?, 'client_mcp_hqbase_full', ?, ?, ?, ?, ?, ?)`
+         VALUES ('access_mcp_sovereign-mail_full', ?, 'client_mcp_sovereign-mail_full', ?, ?, ?, ?, ?, ?)`
       ).bind(
         storedFullToken,
         sessionId,
@@ -219,7 +223,7 @@ describe("HQBase MCP server", () => {
 
     const registration = await SELF.fetch(metadata.registration_endpoint ?? "", {
       body: JSON.stringify({
-        client_name: "HQBase MCP default scope test",
+        client_name: "Sovereign Mail MCP default scope test",
         redirect_uris: ["https://client.example/default-callback"],
         token_endpoint_auth_method: "none"
       }),
@@ -232,7 +236,7 @@ describe("HQBase MCP server", () => {
 
     const fullRegistration = await SELF.fetch(metadata.registration_endpoint ?? "", {
       body: JSON.stringify({
-        client_name: "HQBase MCP full scope test",
+        client_name: "Sovereign Mail MCP full scope test",
         redirect_uris: ["https://client.example/full-default-callback"],
         scope: fullScopes.join(" "),
         token_endpoint_auth_method: "none"
@@ -270,12 +274,12 @@ describe("HQBase MCP server", () => {
       params: {
         protocolVersion: "2025-11-25",
         capabilities: {},
-        clientInfo: { name: "HQBase test", version: "1.0.0" }
+        clientInfo: { name: "Sovereign Mail test", version: "1.0.0" }
       }
     });
     expect(readChallenge.status).toBe(401);
     expect(readChallenge.headers.get("www-authenticate")).toContain(
-      'resource_metadata="https://hqbase.test/.well-known/oauth-protected-resource/mcp"'
+      'resource_metadata="https://sovereign-mail.test/.well-known/oauth-protected-resource/mcp"'
     );
     expect(readChallenge.headers.get("www-authenticate")).toContain('scope="mail:read"');
 
@@ -287,7 +291,7 @@ describe("HQBase MCP server", () => {
         params: {
           protocolVersion: "2025-11-25",
           capabilities: {},
-          clientInfo: { name: "HQBase test", version: "1.0.0" }
+          clientInfo: { name: "Sovereign Mail test", version: "1.0.0" }
         }
       },
       undefined,
@@ -295,7 +299,7 @@ describe("HQBase MCP server", () => {
     );
     expect(fullChallenge.status).toBe(401);
     expect(fullChallenge.headers.get("www-authenticate")).toContain(
-      'resource_metadata="https://hqbase.test/.well-known/oauth-protected-resource/mcp/full"'
+      'resource_metadata="https://sovereign-mail.test/.well-known/oauth-protected-resource/mcp/full"'
     );
     expect(fullChallenge.headers.get("www-authenticate")).toContain(
       'scope="mail:read mail:write mail:send"'

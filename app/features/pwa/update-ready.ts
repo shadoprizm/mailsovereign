@@ -1,6 +1,6 @@
-export const PWA_UPDATE_READY_EVENT = "hqbase:pwa-update-ready";
+export const PWA_UPDATE_READY_EVENT = "sovereign-mail:pwa-update-ready";
 
-const readyAttribute = "data-hqbase-update-ready";
+const readyAttribute = "data-sovereign-mail-update-ready";
 
 export function announcePwaUpdateReady(): void {
   if (typeof document === "undefined" || document.documentElement.hasAttribute(readyAttribute)) {

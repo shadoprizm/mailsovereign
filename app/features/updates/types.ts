@@ -1,5 +1,5 @@
 export type UpdateStatus = {
-  product: "hqbase";
+  product: "sovereign-mail";
   installedVersion: string;
   installedSchemaVersion: number;
   channel: "stable";

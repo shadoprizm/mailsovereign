@@ -2,15 +2,15 @@ import { z } from "zod";
 import { getSetting } from "../../db/client";
 import type { WorkerEnv } from "../../lib/env";
 import { AppError } from "../../lib/errors";
-import { hqbaseProductConfig } from "../../lib/product-config";
+import { sovereignMailProductConfig } from "../../lib/product-config";
 import type { ReleaseManifest, UpdateStatus } from "./types";
 
-const product = "hqbase" as const;
-const installedSchemaVersion = 2;
+const product = "sovereign-mail" as const;
+const installedSchemaVersion = 20;
 const envelopeSchema = z.object({ payload: z.string().min(1), signature: z.string().min(1) });
 const manifestSchema = z.object({
-  format: z.literal("hqbase-release-v1"),
-  product: z.literal("hqbase"),
+  format: z.literal("sovereign-mail-release-v1"),
+  product: z.literal("sovereign-mail"),
   channel: z.literal("stable"),
   version: z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/),
   schemaVersion: z.number().int().positive(),
@@ -20,18 +20,20 @@ const manifestSchema = z.object({
   artifact: z.object({
     url: z.string().url(),
     sha256: z.string().regex(/^[a-f0-9]{64}$/),
-    size: z.number().int().nonnegative()
+    size: z.number().int().positive()
   }),
-  keyId: z.literal("hqbase-release-2026-01")
+  keyId: z.literal("sovereign-mail-release-2026-01")
 });
 
 export async function getUpdateStatus(
   env: WorkerEnv,
   fetcher: typeof fetch = fetch
 ): Promise<UpdateStatus> {
-  const installedVersion = env.HQBASE_APP_VERSION ?? "0.1.1";
+  assertUpdatesEnabled(env);
+  const installedVersion = env.SOVEREIGN_MAIL_APP_VERSION ?? "0.1.1";
   const response = await fetcher(
-    env.HQBASE_RELEASE_MANIFEST_URL?.trim() || hqbaseProductConfig.releaseManifestUrl,
+    env.SOVEREIGN_MAIL_RELEASE_MANIFEST_URL?.trim() ||
+      sovereignMailProductConfig.releaseManifestUrl,
     { headers: { accept: "application/json" }, signal: AbortSignal.timeout(5_000) }
   );
   if (!response.ok)
@@ -40,7 +42,7 @@ export async function getUpdateStatus(
   if (
     !(await verifyEnvelope(
       envelope,
-      env.HQBASE_RELEASE_PUBLIC_KEY?.trim() || hqbaseProductConfig.releasePublicKey
+      env.SOVEREIGN_MAIL_RELEASE_PUBLIC_KEY?.trim() || sovereignMailProductConfig.releasePublicKey
     ))
   )
     throw new AppError("UPDATE_SIGNATURE_INVALID", "Release signature verification failed.", 503);
@@ -68,6 +70,7 @@ export async function triggerUpdate(
   apiToken: string,
   fetcher: typeof fetch = fetch
 ): Promise<{ buildId: string; status: string }> {
+  assertUpdatesEnabled(env);
   const domain =
     (await getSetting(env.DB, "portal_host", z.string())) ??
     (await getSetting(env.DB, "primary_domain", z.string()));
@@ -95,7 +98,7 @@ export async function triggerUpdate(
     fetcher
   );
   const script = scripts.result.find(
-    (candidate) => candidate.id === (env.HQBASE_WORKER_NAME ?? "hqbase")
+    (candidate) => candidate.id === (env.SOVEREIGN_MAIL_WORKER_NAME ?? "sovereign-mail")
   );
   if (!script?.tag)
     throw new AppError(
@@ -131,6 +134,23 @@ export async function triggerUpdate(
       502
     );
   return { buildId, status: build.result.status ?? "queued" };
+}
+
+export function assertUpdatesEnabled(env: WorkerEnv): void {
+  const override = env.SOVEREIGN_MAIL_UPDATES_ENABLED?.trim().toLowerCase();
+  const enabled =
+    override === "true"
+      ? true
+      : override === "false"
+        ? false
+        : sovereignMailProductConfig.releaseUpdatesEnabled;
+  if (!enabled) {
+    throw new AppError(
+      "UPDATES_DISABLED",
+      "Updates for this customized installation are managed by its maintainer.",
+      404
+    );
+  }
 }
 
 async function verifyEnvelope(

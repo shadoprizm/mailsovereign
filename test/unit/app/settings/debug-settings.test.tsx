@@ -18,7 +18,7 @@ describe("debug settings", () => {
     const report = buildDebugReport(setup);
 
     expect(report).toContain("# workspace");
-    expect(report).toContain('product = "hqbase"');
+    expect(report).toContain('product = "sovereign-mail"');
     expect(report).toContain('primary_domain = "example.com"');
     expect(report).toContain("users = 3");
     expect(report).not.toContain("service_hostname");

@@ -14,3 +14,7 @@ overrides:
 
 minimumReleaseAgeExclude:
   - '@cloudflare/workers-types@5.20260711.1'
+
+patchedDependencies:
+  cf-imap@1.0.0: patches/cf-imap@1.0.0.patch
+  worker-mailer@1.2.1: patches/worker-mailer@1.2.1.patch

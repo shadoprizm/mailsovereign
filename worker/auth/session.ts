@@ -22,6 +22,10 @@ const betterSessionSchema = z.object({
   })
 });
 
+const defaultRecentSessionMaxAgeMs = 10 * 60 * 1000;
+const minimumRecentSessionMaxAgeSeconds = 5 * 60;
+const maximumRecentSessionMaxAgeSeconds = 24 * 60 * 60;
+
 export type AuthContext = {
   session: {
     id: string;
@@ -93,7 +97,10 @@ export function requireRole(
   }
 }
 
-export function requireRecentSession(authContext: AuthContext, maxAgeMs = 10 * 60 * 1000): void {
+export function requireRecentSession(
+  authContext: AuthContext,
+  maxAgeMs = defaultRecentSessionMaxAgeMs
+): void {
   if (!isRecentSession(authContext, maxAgeMs)) {
     throw new AppError(
       "RECENT_AUTH_REQUIRED",
@@ -103,10 +110,39 @@ export function requireRecentSession(authContext: AuthContext, maxAgeMs = 10 * 6
   }
 }
 
+export function requireRecentSessionForEnvironment(
+  authContext: AuthContext,
+  env: Pick<WorkerEnv, "RECENT_AUTH_MAX_AGE_SECONDS">
+): void {
+  requireRecentSession(authContext, recentSessionMaxAgeMs(env));
+}
+
 export function isRecentSession(
   authContext: AuthContext,
-  maxAgeMs = 10 * 60 * 1000,
+  maxAgeMs = defaultRecentSessionMaxAgeMs,
   now = Date.now()
 ): boolean {
   return now - authContext.session.createdAt.getTime() <= maxAgeMs;
+}
+
+export function isRecentSessionForEnvironment(
+  authContext: AuthContext,
+  env: Pick<WorkerEnv, "RECENT_AUTH_MAX_AGE_SECONDS">,
+  now = Date.now()
+): boolean {
+  return isRecentSession(authContext, recentSessionMaxAgeMs(env), now);
+}
+
+export function recentSessionMaxAgeMs(env: Pick<WorkerEnv, "RECENT_AUTH_MAX_AGE_SECONDS">): number {
+  const configured = env.RECENT_AUTH_MAX_AGE_SECONDS;
+  if (!configured || !/^\d+$/.test(configured)) return defaultRecentSessionMaxAgeMs;
+  const seconds = Number(configured);
+  if (
+    !Number.isSafeInteger(seconds) ||
+    seconds < minimumRecentSessionMaxAgeSeconds ||
+    seconds > maximumRecentSessionMaxAgeSeconds
+  ) {
+    return defaultRecentSessionMaxAgeMs;
+  }
+  return seconds * 1000;
 }

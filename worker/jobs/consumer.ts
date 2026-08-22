@@ -1,6 +1,12 @@
 import { nowIso } from "../db/client";
 import type { WorkerEnv } from "../lib/env";
 import { operationalLog } from "../observability/log";
+import {
+  getImapSmtpConnection,
+  markImapSmtpConnectionError,
+  markImapSmtpConnectionSynced
+} from "../providers/connections";
+import { ProviderError } from "../providers/errors";
 import { executeImapConnectionSync } from "../providers/imap/executor";
 import { providerId } from "../providers/types";
 import { isJob, type Job } from "./types";
@@ -10,10 +16,14 @@ const batchSize = 100;
 async function deleteExpiredRows(env: WorkerEnv): Promise<Record<string, number>> {
   const nowSeconds = Math.floor(Date.now() / 1000);
   const results = await env.DB.batch([
-    env.DB.prepare("DELETE FROM rate_limits WHERE expires_at < ?").bind(nowSeconds)
+    env.DB.prepare("DELETE FROM rate_limits WHERE expires_at < ?").bind(nowSeconds),
+    env.DB.prepare(
+      "DELETE FROM operation_runs WHERE finished_at IS NOT NULL AND finished_at < datetime('now', '-30 days')"
+    )
   ]);
   return {
-    rateLimits: results[0]?.meta.changes ?? 0
+    rateLimits: results[0]?.meta.changes ?? 0,
+    operationRuns: results[1]?.meta.changes ?? 0
   };
 }
 
@@ -98,6 +108,13 @@ export async function processJob(env: WorkerEnv, job: Job): Promise<void> {
       .run();
     operationalLog("info", "job_succeeded", { jobId: job.id, kind: job.kind });
   } catch (error) {
+    if (job.kind === "provider-sync") {
+      await markImapSmtpConnectionError(
+        env.DB,
+        providerId(job.providerId),
+        error instanceof ProviderError ? error.code : "PROVIDER_SYNC_FAILED"
+      ).catch(() => undefined);
+    }
     await env.DB.prepare(
       `UPDATE operation_runs SET status = 'failed', error_code = ?, finished_at = ? WHERE id = ?`
     )
@@ -128,7 +145,13 @@ async function jobCounters(env: WorkerEnv, job: Job): Promise<Record<string, num
     return { ...(await deleteExpiredRows(env)), retainedMessages: await applyRetention(env) };
   }
   if (job.kind === "integrity-scan") return integrityCounters(env);
-  const result = await executeImapConnectionSync(env, providerId(job.providerId));
+  const owner = providerId(job.providerId);
+  const connection = await getImapSmtpConnection(env.DB, owner);
+  if (!connection.isEnabled || !connection.verifiedAt || !connection.mailboxAddress) {
+    throw new ProviderError("PROVIDER_UNAVAILABLE", owner);
+  }
+  const result = await executeImapConnectionSync(env, owner);
+  await markImapSmtpConnectionSynced(env.DB, owner);
   return {
     folders: result.folders,
     fetched: result.fetched,

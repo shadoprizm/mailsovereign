@@ -28,9 +28,13 @@ export type ImapSmtpConnectionRecord = {
   readonly providerId: ProviderId;
   readonly kind: "imap-smtp";
   readonly displayName: string;
+  readonly mailboxAddress: string | null;
   readonly config: ImapSmtpConnectionConfig;
   readonly credentialKeyVersion: number;
   readonly isEnabled: boolean;
+  readonly verifiedAt: string | null;
+  readonly lastSyncedAt: string | null;
+  readonly lastErrorCode: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 };
@@ -55,6 +59,7 @@ export async function insertImapSmtpConnection(
   input: {
     providerId: ProviderId;
     displayName: string;
+    mailboxAddress?: string;
     config: ImapSmtpConnectionConfig;
     credentials: ProviderCredentials;
   }
@@ -75,18 +80,22 @@ export async function insertImapSmtpConnection(
     providerId: input.providerId,
     kind: "imap-smtp",
     displayName: input.displayName,
+    mailboxAddress: (input.mailboxAddress ?? input.credentials.username()).toLowerCase(),
     config,
     credentialKeyVersion,
     isEnabled: true,
+    verifiedAt: null,
+    lastSyncedAt: null,
+    lastErrorCode: null,
     createdAt: timestamp,
     updatedAt: timestamp
   };
   const inserted = await db
     .prepare(
       `INSERT INTO provider_connections
-       (id, provider_id, kind, display_name, config_json, credential_ciphertext,
-        credential_key_version, is_enabled, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+       (id, provider_id, kind, display_name, mailbox_address, config_json,
+        credential_ciphertext, credential_key_version, is_enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
        ON CONFLICT(provider_id) DO NOTHING`
     )
     .bind(
@@ -94,6 +103,7 @@ export async function insertImapSmtpConnection(
       record.providerId,
       record.kind,
       record.displayName,
+      record.mailboxAddress,
       JSON.stringify(config),
       ciphertext,
       credentialKeyVersion,
@@ -112,9 +122,13 @@ type ConnectionRow = {
   provider_id: string;
   kind: string;
   display_name: string;
+  mailbox_address: string | null;
   config_json: string;
   credential_key_version: number;
   is_enabled: number;
+  verified_at: string | null;
+  last_synced_at: string | null;
+  last_error_code: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -122,8 +136,9 @@ type ConnectionRow = {
 export async function listImapSmtpConnections(db: D1Database): Promise<ImapSmtpConnectionRecord[]> {
   const { results } = await db
     .prepare(
-      `SELECT id, provider_id, kind, display_name, config_json,
-              credential_key_version, is_enabled, created_at, updated_at
+      `SELECT id, provider_id, kind, display_name, mailbox_address, config_json,
+              credential_key_version, is_enabled, verified_at, last_synced_at,
+              last_error_code, created_at, updated_at
        FROM provider_connections
        WHERE kind = 'imap-smtp'
        ORDER BY created_at ASC`
@@ -138,8 +153,9 @@ export async function getImapSmtpConnection(
 ): Promise<ImapSmtpConnectionRecord> {
   const row = await db
     .prepare(
-      `SELECT id, provider_id, kind, display_name, config_json,
-              credential_key_version, is_enabled, created_at, updated_at
+      `SELECT id, provider_id, kind, display_name, mailbox_address, config_json,
+              credential_key_version, is_enabled, verified_at, last_synced_at,
+              last_error_code, created_at, updated_at
        FROM provider_connections
        WHERE provider_id = ? AND kind = 'imap-smtp'`
     )
@@ -147,6 +163,76 @@ export async function getImapSmtpConnection(
     .first<ConnectionRow>();
   if (!row) throw new ProviderError("PROVIDER_NOT_REGISTERED", owner);
   return toRecord(row);
+}
+
+export async function findImapSmtpConnectionByMailboxAddress(
+  db: D1Database,
+  address: string
+): Promise<ImapSmtpConnectionRecord | null> {
+  const row = await db
+    .prepare(
+      `SELECT id, provider_id, kind, display_name, mailbox_address, config_json,
+              credential_key_version, is_enabled, verified_at, last_synced_at,
+              last_error_code, created_at, updated_at
+       FROM provider_connections
+       WHERE mailbox_address = ? AND kind = 'imap-smtp'
+       LIMIT 1`
+    )
+    .bind(address.toLowerCase())
+    .first<ConnectionRow>();
+  return row ? toRecord(row) : null;
+}
+
+export async function deleteImapSmtpConnection(db: D1Database, owner: ProviderId): Promise<void> {
+  await db
+    .prepare("DELETE FROM provider_connections WHERE provider_id = ? AND kind = 'imap-smtp'")
+    .bind(owner)
+    .run();
+}
+
+export async function markImapSmtpConnectionVerified(
+  db: D1Database,
+  owner: ProviderId,
+  verifiedAt = nowIso()
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE provider_connections
+       SET verified_at = ?, last_error_code = NULL, updated_at = ?
+       WHERE provider_id = ? AND kind = 'imap-smtp'`
+    )
+    .bind(verifiedAt, verifiedAt, owner)
+    .run();
+}
+
+export async function markImapSmtpConnectionError(
+  db: D1Database,
+  owner: ProviderId,
+  errorCode: string
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE provider_connections
+       SET last_error_code = ?, updated_at = ?
+       WHERE provider_id = ? AND kind = 'imap-smtp'`
+    )
+    .bind(errorCode, nowIso(), owner)
+    .run();
+}
+
+export async function markImapSmtpConnectionSynced(
+  db: D1Database,
+  owner: ProviderId,
+  syncedAt = nowIso()
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE provider_connections
+       SET last_synced_at = ?, last_error_code = NULL, updated_at = ?
+       WHERE provider_id = ? AND kind = 'imap-smtp'`
+    )
+    .bind(syncedAt, syncedAt, owner)
+    .run();
 }
 
 export async function getSealedCredential(
@@ -186,9 +272,13 @@ function toRecord(row: ConnectionRow): ImapSmtpConnectionRecord {
     providerId: parseProviderId(row.provider_id),
     kind: "imap-smtp",
     displayName: row.display_name,
+    mailboxAddress: row.mailbox_address ?? null,
     config: parseConfig(parsed, row.provider_id),
     credentialKeyVersion: row.credential_key_version,
     isEnabled: row.is_enabled === 1,
+    verifiedAt: row.verified_at ?? null,
+    lastSyncedAt: row.last_synced_at ?? null,
+    lastErrorCode: row.last_error_code ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };

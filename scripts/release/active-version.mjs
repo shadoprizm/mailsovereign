@@ -52,11 +52,12 @@ export function parseActiveRelease(deployment, version) {
     throw new Error("Wrangler returned details for the wrong active Worker version.");
   }
   const binding = version?.resources?.bindings?.find(
-    (candidate) => candidate?.name === "HQBASE_APP_VERSION" && candidate?.type === "plain_text"
+    (candidate) =>
+      candidate?.name === "SOVEREIGN_MAIL_APP_VERSION" && candidate?.type === "plain_text"
   );
   if (typeof binding?.text !== "string" || !/^\d+\.\d+\.\d+/.test(binding.text)) {
     if (isDeployButtonBootstrap(deployment, version)) return null;
-    throw new Error("The active HQBase Worker is missing its installed version binding.");
+    throw new Error("The active Sovereign Mail Worker is missing its installed version binding.");
   }
   return {
     versionId,
@@ -100,7 +101,7 @@ function activeVersionId(deployment) {
     ? deployment.versions.filter((candidate) => candidate?.percentage === 100)
     : [];
   if (activeVersions.length !== 1 || typeof activeVersions[0]?.version_id !== "string") {
-    throw new Error("The HQBase Worker does not have one active 100-percent version.");
+    throw new Error("The Sovereign Mail Worker does not have one active 100-percent version.");
   }
   return activeVersions[0].version_id;
 }

@@ -23,7 +23,7 @@ export const sendMessageSchema = z
     if (recipientCount > maxTotalRecipients) {
       context.addIssue({
         code: "custom",
-        message: "Cloudflare Email Sending allows up to 50 total recipients.",
+        message: "A message can have at most 50 total recipients.",
         path: ["to"]
       });
     }
@@ -46,7 +46,7 @@ export const replyMessageSchema = z
     if (recipientCount > maxTotalRecipients) {
       context.addIssue({
         code: "custom",
-        message: "Cloudflare Email Sending allows up to 50 total recipients.",
+        message: "A message can have at most 50 total recipients.",
         path: ["to"]
       });
     }
@@ -70,7 +70,7 @@ export const forwardMessageSchema = z
     if (recipientCount > maxTotalRecipients) {
       context.addIssue({
         code: "custom",
-        message: "Cloudflare Email Sending allows up to 50 total recipients.",
+        message: "A message can have at most 50 total recipients.",
         path: ["to"]
       });
     }

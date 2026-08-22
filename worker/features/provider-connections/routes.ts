@@ -1,6 +1,10 @@
 import { Hono } from "hono";
 
-import { requireAuthContext, requireRecentSession, requireRole } from "../../auth/session";
+import {
+  requireAuthContext,
+  requireRecentSessionForEnvironment,
+  requireRole
+} from "../../auth/session";
 import { nowIso } from "../../db/client";
 import type { HonoApp } from "../../lib/env";
 import { AppError } from "../../lib/errors";
@@ -8,24 +12,28 @@ import { readJson } from "../../lib/json";
 import { parseWith } from "../../lib/validation";
 import type { ImapSmtpConnectionRecord } from "../../providers/connections";
 import {
+  deleteImapSmtpConnection,
   getImapSmtpConnection,
   insertImapSmtpConnection,
-  listImapSmtpConnections
+  listImapSmtpConnections,
+  markImapSmtpConnectionError,
+  markImapSmtpConnectionVerified
 } from "../../providers/connections";
 import { importCredentialKey, ProviderCredentials } from "../../providers/credentials";
 import { ProviderError } from "../../providers/errors";
+import { createCloudflareImapClient } from "../../providers/imap/cloudflare-imap-client";
+import { createCloudflareSmtpClient } from "../../providers/imap/cloudflare-smtp-client";
 import { resetFolderCursor } from "../../providers/imap/cursors";
 import {
   createImapClientForConnection,
   createSmtpVerifierForConnection
 } from "../../providers/imap/factory";
-import { createImapFlowClient } from "../../providers/imap/node-imap-client";
-import { createNodemailerSmtpClient } from "../../providers/imap/node-smtp-client";
 import { ImapClientError } from "../../providers/imap/ports";
 import { SmtpSubmitError } from "../../providers/imap/transport";
 import { providerId } from "../../providers/types";
 import { recordAudit } from "../audit/service";
 
+import { ensureProviderMailbox } from "./service";
 import { createProviderConnectionSchema, resetProviderCursorSchema } from "./validation";
 
 export const providerConnectionRoutes = new Hono<HonoApp>();
@@ -39,7 +47,7 @@ providerConnectionRoutes.get("/", async (c) => {
 providerConnectionRoutes.post("/", async (c) => {
   const auth = await requireAuthContext(c.env, c.req.raw);
   requireRole(auth, ["owner", "admin"]);
-  requireRecentSession(auth);
+  requireRecentSessionForEnvironment(auth, c.env);
   const input = parseWith(createProviderConnectionSchema, await readJson(c.req.raw));
   let connection: ImapSmtpConnectionRecord;
   try {
@@ -47,6 +55,7 @@ providerConnectionRoutes.post("/", async (c) => {
     connection = await insertImapSmtpConnection(c.env.DB, key, {
       providerId: providerId(input.providerId),
       displayName: input.displayName,
+      mailboxAddress: input.username,
       config: input.config,
       credentials: new ProviderCredentials(input.username, input.password)
     });
@@ -66,22 +75,50 @@ providerConnectionRoutes.post("/", async (c) => {
   return c.json(connection, 201);
 });
 
+providerConnectionRoutes.delete("/:providerId", async (c) => {
+  const auth = await requireAuthContext(c.env, c.req.raw);
+  requireRole(auth, ["owner", "admin"]);
+  requireRecentSessionForEnvironment(auth, c.env);
+  const owner = parseProviderId(c.req.param("providerId"));
+  const connection = await getImapSmtpConnection(c.env.DB, owner).catch((error) => {
+    throw connectionAppError(error);
+  });
+  await deleteImapSmtpConnection(c.env.DB, owner).catch((error) => {
+    throw connectionAppError(error);
+  });
+  await recordAudit(c.env.DB, {
+    correlationId: c.get("correlationId"),
+    actorType: "user",
+    actorId: auth.user.id,
+    action: "provider_connection.delete",
+    resourceType: "provider_connection",
+    resourceId: connection.id,
+    outcome: "success",
+    metadata: { mailboxAddress: connection.mailboxAddress }
+  });
+  return c.body(null, 204);
+});
+
 providerConnectionRoutes.post("/:providerId/sync", async (c) => {
   const auth = await requireAuthContext(c.env, c.req.raw);
   requireRole(auth, ["owner", "admin"]);
-  requireRecentSession(auth);
-  if (!c.env.HQBASE_JOBS) {
+  requireRecentSessionForEnvironment(auth, c.env);
+  if (!c.env.SOVEREIGN_MAIL_JOBS) {
     throw new AppError("QUEUE_UNAVAILABLE", "The job queue is unavailable.", 503);
   }
   const owner = parseProviderId(c.req.param("providerId"));
   const connection = await getImapSmtpConnection(c.env.DB, owner).catch((error) => {
     throw connectionAppError(error);
   });
-  if (!connection.isEnabled) {
-    throw new AppError("PROVIDER_DISABLED", "The provider connection is disabled.", 409);
+  if (!connection.isEnabled || !connection.verifiedAt || !connection.mailboxAddress) {
+    throw new AppError(
+      "PROVIDER_NOT_READY",
+      "Verify the provider connection before synchronizing it.",
+      409
+    );
   }
   const id = `provider-sync:${crypto.randomUUID()}`;
-  await c.env.HQBASE_JOBS.send({
+  await c.env.SOVEREIGN_MAIL_JOBS.send({
     id,
     kind: "provider-sync",
     providerId: connection.providerId,
@@ -102,17 +139,25 @@ providerConnectionRoutes.post("/:providerId/sync", async (c) => {
 providerConnectionRoutes.post("/:providerId/verify", async (c) => {
   const auth = await requireAuthContext(c.env, c.req.raw);
   requireRole(auth, ["owner", "admin"]);
-  requireRecentSession(auth);
+  requireRecentSessionForEnvironment(auth, c.env);
   const owner = parseProviderId(c.req.param("providerId"));
   const connection = await getImapSmtpConnection(c.env.DB, owner).catch((error) => {
     throw connectionAppError(error);
   });
+  if (!connection.mailboxAddress) {
+    throw new AppError(
+      "PROVIDER_RECONNECT_REQUIRED",
+      "Reconnect this provider so it can be bound to a mailbox address.",
+      409
+    );
+  }
+  let verifiedAt: string;
   try {
     const { client } = await createImapClientForConnection(
       c.env.DB,
       c.env,
       owner,
-      createImapFlowClient
+      createCloudflareImapClient
     );
     try {
       await client.listFolders({ maxFolders: 64 });
@@ -123,10 +168,16 @@ providerConnectionRoutes.post("/:providerId/verify", async (c) => {
       c.env.DB,
       c.env,
       owner,
-      createNodemailerSmtpClient
+      createCloudflareSmtpClient
     );
     await smtp.verify();
+    await ensureProviderMailbox(c.env.DB, connection);
+    verifiedAt = nowIso();
+    await markImapSmtpConnectionVerified(c.env.DB, owner, verifiedAt);
   } catch (error) {
+    await markImapSmtpConnectionError(c.env.DB, owner, providerFailureCode(error)).catch(
+      () => undefined
+    );
     await recordAudit(c.env.DB, {
       correlationId: c.get("correlationId"),
       actorType: "user",
@@ -136,7 +187,22 @@ providerConnectionRoutes.post("/:providerId/verify", async (c) => {
       resourceId: connection.id,
       outcome: "failure"
     });
+    if (error instanceof AppError) throw error;
     throw protocolAppError(error);
+  }
+  let syncQueued = false;
+  if (c.env.SOVEREIGN_MAIL_JOBS) {
+    try {
+      await c.env.SOVEREIGN_MAIL_JOBS.send({
+        id: `provider-sync:${connection.providerId}:${crypto.randomUUID()}`,
+        kind: "provider-sync",
+        providerId: connection.providerId,
+        requestedAt: verifiedAt
+      });
+      syncQueued = true;
+    } catch {
+      // Verification succeeded; the scheduled sync will retry on the next five-minute tick.
+    }
   }
   await recordAudit(c.env.DB, {
     correlationId: c.get("correlationId"),
@@ -147,13 +213,19 @@ providerConnectionRoutes.post("/:providerId/verify", async (c) => {
     resourceId: connection.id,
     outcome: "success"
   });
-  return c.json({ imap: true, smtp: true });
+  return c.json({
+    imap: true,
+    smtp: true,
+    mailboxAddress: connection.mailboxAddress,
+    verifiedAt,
+    syncQueued
+  });
 });
 
 providerConnectionRoutes.post("/:providerId/cursor-reset", async (c) => {
   const auth = await requireAuthContext(c.env, c.req.raw);
   requireRole(auth, ["owner", "admin"]);
-  requireRecentSession(auth);
+  requireRecentSessionForEnvironment(auth, c.env);
   const owner = parseProviderId(c.req.param("providerId"));
   const input = parseWith(resetProviderCursorSchema, await readJson(c.req.raw));
   const reset = await resetFolderCursor(c.env.DB, owner, input.folderPath);
@@ -235,4 +307,11 @@ function protocolAppError(error: unknown): AppError {
     );
   }
   return connectionAppError(error);
+}
+
+function providerFailureCode(error: unknown): string {
+  if (error instanceof ProviderError || error instanceof AppError) return error.code;
+  if (error instanceof ImapClientError) return `IMAP_${error.reason.toUpperCase()}`;
+  if (error instanceof SmtpSubmitError) return `SMTP_${error.reason.toUpperCase()}`;
+  return "PROVIDER_VERIFICATION_FAILED";
 }

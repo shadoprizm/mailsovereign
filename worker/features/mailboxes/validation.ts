@@ -22,3 +22,9 @@ export const createMailboxAddressSchema = z.object({
   receiveEnabled: z.boolean().optional(),
   sendEnabled: z.boolean().optional()
 });
+
+export const removeMailboxSchema = z
+  .object({
+    confirmation: z.string().min(1).max(254)
+  })
+  .strict();

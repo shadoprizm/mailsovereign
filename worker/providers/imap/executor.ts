@@ -1,12 +1,13 @@
 import { handleInboundEmail } from "../../email/inbound";
 import type { WorkerEnv } from "../../lib/env";
+import { operationalLog } from "../../observability/log";
 import { ProviderError } from "../errors";
 import type { ProviderId } from "../types";
 
+import { createCloudflareImapClient } from "./cloudflare-imap-client";
 import type { StoredFolderCursor } from "./cursors";
 import { loadFolderCursor, saveFolderCursor } from "./cursors";
 import { createImapClientForConnection } from "./factory";
-import { createImapFlowClient } from "./node-imap-client";
 import { type ImapClient, ImapClientError } from "./ports";
 import { planFolderSync, reconcileFolderListing } from "./sync-plan";
 
@@ -60,6 +61,7 @@ export async function executeImapInboxSync(input: {
   try {
     const folders = await providerCall(
       input.providerId,
+      "list-folders",
       input.client.listFolders({ maxFolders: limits.maxFolders })
     );
     const inboxes = folders.filter(
@@ -69,7 +71,11 @@ export async function executeImapInboxSync(input: {
       throw new ProviderError("PROVIDER_MALFORMED_RESPONSE", input.providerId);
     }
     const folder = inboxes[0];
-    const status = await providerCall(input.providerId, input.client.folderStatus(folder.path));
+    const status = await providerCall(
+      input.providerId,
+      "folder-status",
+      input.client.folderStatus(folder.path)
+    );
     const stored = await input.cursors.load(folder.path);
     const plan = planFolderSync({
       folder: status,
@@ -124,7 +130,7 @@ export async function executeImapConnectionSync(
     env.DB,
     env,
     providerId,
-    createImapFlowClient
+    createCloudflareImapClient
   );
   return executeImapInboxSync({
     providerId,
@@ -172,6 +178,7 @@ async function syncRange(input: {
 }): Promise<{ fetched: number; inserted: number; duplicates: number }> {
   const listing = await providerCall(
     input.providerId,
+    "list-uids",
     input.client.listUids(input.folderPath, {
       fromUid: input.range.fromUid,
       toUid: input.range.toUid,
@@ -187,6 +194,7 @@ async function syncRange(input: {
     }
     const raw = await providerCall(
       input.providerId,
+      "fetch-raw",
       input.client.fetchRaw(input.folderPath, uid, { maxBytes: input.limits.maxMessageBytes })
     );
     const result = await input.store({
@@ -203,11 +211,21 @@ async function syncRange(input: {
   return { fetched: reconciliation.untrackedUids.length, inserted, duplicates };
 }
 
-async function providerCall<T>(providerId: ProviderId, promise: Promise<T>): Promise<T> {
+async function providerCall<T>(
+  providerId: ProviderId,
+  operation: "fetch-raw" | "folder-status" | "list-folders" | "list-uids",
+  promise: Promise<T>
+): Promise<T> {
   try {
     return await promise;
   } catch (error) {
     if (!(error instanceof ImapClientError)) throw error;
+    operationalLog("warn", "provider_imap_call_failed", {
+      providerId,
+      operation,
+      reason: error.reason,
+      ...(error.diagnostic ? { diagnostic: error.diagnostic } : {})
+    });
     const code =
       error.reason === "auth"
         ? "PROVIDER_AUTH_FAILED"

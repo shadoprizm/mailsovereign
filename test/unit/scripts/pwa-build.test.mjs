@@ -41,12 +41,12 @@ describe("PWA build contract", () => {
     expect(iconGenerator).toContain('file: "icon-512.png", markWidth: 308');
     expect(iconGenerator).toContain('file: "icon-maskable-512.png", markWidth: 266');
     expect(iconGenerator).toContain('file: "notification-badge.png"');
-    expect(logo).toContain('width="168" height="132" viewBox="42 55 168 132"');
+    expect(logo).toContain('viewBox="0 0 64 64"');
     expect(logo).toContain("<title>Sovereign Mail</title>");
-    expect(logo).not.toContain('fill="black"');
-    expect(logo).toContain('id="paint0_linear_68_26"');
-    expect(favicon).toContain('width="191" height="191" viewBox="30.5 25.5 191 191"');
-    expect(favicon).not.toContain('fill="black"');
+    expect(logo).toContain('fill="#08111F"');
+    expect(logo).toContain('stroke="#F5B942"');
+    expect(logo).toContain('fill="#31D6A0"');
+    expect(favicon).toBe(logo);
     expect(headers).toMatch(/\/service-worker\.js[\s\S]*no-cache, no-store, must-revalidate/);
     expect(headers).toMatch(/\/assets\/\*[\s\S]*max-age=31536000, immutable/);
   });
@@ -81,7 +81,7 @@ describe("PWA build contract", () => {
 
   it("generates network-first navigation and an explicit update handshake", () => {
     const worker = renderServiceWorker({
-      cacheName: "hqbase-pwa-test-1",
+      cacheName: "sovereign-mail-pwa-test-1",
       precacheUrls: ["/assets/app-abc.js", "/offline.html"]
     });
     expect(worker).toContain('request.mode === "navigate"');
@@ -93,13 +93,13 @@ describe("PWA build contract", () => {
 
   it("generates visible push notifications, unread badging, and safe message navigation", () => {
     const worker = renderServiceWorker({
-      cacheName: "hqbase-pwa-test-1",
+      cacheName: "sovereign-mail-pwa-test-1",
       precacheUrls: ["/assets/app-abc.js", "/offline.html"]
     });
     expect(worker).toContain('addEventListener("push"');
     expect(worker).toContain('showNotification("New email"');
     expect(worker).toContain("setAppBadge(unreadCount)");
-    expect(worker).toContain('"hqbase:push-received"');
+    expect(worker).toContain('"sovereign-mail:push-received"');
     expect(worker).toContain('addEventListener("notificationclick"');
     expect(worker).toContain('return "/inbox"');
   });

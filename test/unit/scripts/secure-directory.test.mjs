@@ -22,7 +22,7 @@ const loosen = isWindows ? grantAccessToEveryone : (directory) => chmodSync(dire
 
 describe("restricted directory", () => {
   it("leaves no other account with access", () => {
-    const directory = createRestrictedDirectory("hqbase-secure-test-");
+    const directory = createRestrictedDirectory("sovereign-mail-secure-test-");
 
     try {
       if (isWindows) {
@@ -36,7 +36,7 @@ describe("restricted directory", () => {
   });
 
   it.runIf(isWindows)("reports an unrelated account as having access", () => {
-    const directory = mkdtempSync(resolve(tmpdir(), "hqbase-secure-foreign-"));
+    const directory = mkdtempSync(resolve(tmpdir(), "sovereign-mail-secure-foreign-"));
 
     try {
       grantAccessToEveryone(directory);
@@ -52,8 +52,8 @@ describe("restricted directory", () => {
   });
 
   it("refuses to hand back a directory it could not restrict", () => {
-    expect(() => createRestrictedDirectory("hqbase-secure-test-", { restrict: loosen })).toThrow(
-      "could not be restricted"
-    );
+    expect(() =>
+      createRestrictedDirectory("sovereign-mail-secure-test-", { restrict: loosen })
+    ).toThrow("could not be restricted");
   });
 });

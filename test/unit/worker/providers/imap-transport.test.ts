@@ -113,6 +113,10 @@ describe("imap-smtp mail transport", () => {
 
 describe("imap-smtp transport construction from a stored connection", () => {
   const migration = readFileSync(resolve("migrations/0011_provider_connections.sql"), "utf8");
+  const routingMigration = readFileSync(
+    resolve("migrations/0014_provider_delivery_routing.sql"),
+    "utf8"
+  );
 
   function d1From(db: DatabaseSync): D1Database {
     return {
@@ -136,6 +140,7 @@ describe("imap-smtp transport construction from a stored connection", () => {
     const sqlite = new DatabaseSync(":memory:");
     sqlite.exec("PRAGMA foreign_keys=ON;");
     sqlite.exec(migration);
+    sqlite.exec(routingMigration);
     const db = d1From(sqlite);
     const key = await importCredentialKey(secret);
     await insertImapSmtpConnection(db, key, {

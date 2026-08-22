@@ -38,6 +38,6 @@ describe("sendMessageSchema", () => {
         subject: "Hello",
         text: "Plain text body"
       })
-    ).toThrow("Cloudflare Email Sending allows up to 50 total recipients.");
+    ).toThrow("A message can have at most 50 total recipients.");
   });
 });

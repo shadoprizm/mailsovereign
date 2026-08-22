@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "@/lib/api-client";
+import { apiDelete, apiGet, apiPost } from "@/lib/api-client";
 import type { MailFolderId } from "@/lib/routes";
 import type {
   ConversationAction,
@@ -64,4 +64,10 @@ export async function runConversationAction(
   folder: MailFolderId
 ): Promise<{ affected: number; threadId: string }> {
   return apiPost(`/api/conversations/${id}/${action}`, { folder });
+}
+
+export async function deleteConversation(
+  id: string
+): Promise<{ affected: number; threadId: string }> {
+  return apiDelete(`/api/conversations/${id}`);
 }

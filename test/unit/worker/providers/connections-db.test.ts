@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
+  deleteImapSmtpConnection,
   getSealedCredential,
   insertImapSmtpConnection,
   listImapSmtpConnections
@@ -15,6 +16,10 @@ import { providerId } from "@worker/providers/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const migration = readFileSync(resolve("migrations/0011_provider_connections.sql"), "utf8");
+const routingMigration = readFileSync(
+  resolve("migrations/0014_provider_delivery_routing.sql"),
+  "utf8"
+);
 
 const validConfig = {
   imapHost: "imap.mxrouting.net",
@@ -62,6 +67,7 @@ describe("imap-smtp connection repository against the real schema", () => {
     const db = new DatabaseSync(":memory:");
     db.exec("PRAGMA foreign_keys=ON;");
     db.exec(migration);
+    db.exec(routingMigration);
     return db;
   }
 
@@ -125,7 +131,7 @@ describe("imap-smtp connection repository against the real schema", () => {
       providerId: providerId("mxroute-secondary"),
       displayName: "MXRoute secondary",
       config: validConfig,
-      credentials: new ProviderCredentials("ops@example.com", "secondary-secret")
+      credentials: new ProviderCredentials("secondary@example.com", "secondary-secret")
     });
 
     const primarySealed = await getSealedCredential(db, providerId("mxroute-primary"));
@@ -154,7 +160,7 @@ describe("imap-smtp connection repository against the real schema", () => {
       providerId: providerId("mxroute-secondary"),
       displayName: "MXRoute secondary",
       config: validConfig,
-      credentials: new ProviderCredentials("ops@example.com", "secondary-secret")
+      credentials: new ProviderCredentials("secondary@example.com", "secondary-secret")
     });
 
     const primary = sqlite
@@ -178,5 +184,25 @@ describe("imap-smtp connection repository against the real schema", () => {
     await expect(getSealedCredential(db, providerId("missing"))).rejects.toMatchObject({
       code: "PROVIDER_NOT_REGISTERED"
     });
+  });
+
+  it("deletes the sealed credential so the same mailbox can be reconnected", async () => {
+    const sqlite = database();
+    const db = d1From(sqlite);
+    const key = await credentialKey();
+    const owner = providerId("mxroute-primary");
+
+    await insertImapSmtpConnection(db, key, {
+      providerId: owner,
+      displayName: "MXRoute primary",
+      config: validConfig,
+      credentials: new ProviderCredentials("ops@example.com", "hunter2-secret")
+    });
+    await deleteImapSmtpConnection(db, owner);
+
+    await expect(getSealedCredential(db, owner)).rejects.toMatchObject({
+      code: "PROVIDER_NOT_REGISTERED"
+    });
+    expect(await listImapSmtpConnections(db)).toEqual([]);
   });
 });

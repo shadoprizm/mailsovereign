@@ -204,6 +204,16 @@ export function sanitizeQuotedMessageHtml(input: {
   return { html, inlineAttachmentIds: [...inlineAttachmentIds] };
 }
 
+export function sanitizeEmailSignatureHtml(html: string): string {
+  return sanitizeHtml(html.slice(0, 20_000), {
+    ...sanitizerOptions(),
+    allowedTags: allowedTags.filter((tag) => tag !== "img"),
+    transformTags: {
+      a: (tagName, attributes) => ({ tagName, attribs: safeLinkAttributes(attributes) })
+    }
+  });
+}
+
 function sanitizeDisplayHtml(input: {
   allowRemoteImages: boolean;
   attachments: StoredAttachment[];

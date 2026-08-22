@@ -1,6 +1,6 @@
 import type { WorkerEnv } from "../../lib/env";
 import { AppError } from "../../lib/errors";
-import { hqbaseProductConfig } from "../../lib/product-config";
+import { sovereignMailProductConfig } from "../../lib/product-config";
 
 const AUTHORIZATION_ENDPOINT = "https://dash.cloudflare.com/oauth2/auth";
 
@@ -9,7 +9,7 @@ export type OAuthConfigEnv = Pick<
   "BETTER_AUTH_URL" | "CLOUDFLARE_OAUTH_CLIENT_ID" | "CLOUDFLARE_OAUTH_MODE"
 >;
 
-type CloudflareOAuthMode = "customer" | "official";
+type CloudflareOAuthMode = "customer";
 
 type OAuthFlowConfig = {
   callbackPath: string;
@@ -26,13 +26,6 @@ export function resolveOAuthConfig(
   redirectUri: string;
 } {
   const mode = oauthMode(env);
-  if (mode === "official") {
-    return {
-      clientId: hqbaseProductConfig.cloudflareOAuthClientId,
-      mode,
-      redirectUri: hqbaseProductConfig.cloudflareOAuthRedirectUri
-    };
-  }
   const canonicalOrigin = customerOAuthOrigin(env.BETTER_AUTH_URL);
   if (new URL(request.url).origin !== canonicalOrigin) {
     throw invalidOAuthConfig(
@@ -47,21 +40,11 @@ export function resolveOAuthConfig(
 }
 
 export function cloudflareAuthorizationUrl(
-  request: Request,
   config: ReturnType<typeof resolveOAuthConfig>,
   flow: OAuthFlowConfig,
   state: string,
   codeChallenge: string
 ): URL {
-  if (config.mode === "official") {
-    const relay = new URL("/oauth/authorize", hqbaseProductConfig.cloudflareOAuthRelayUrl);
-    relay.searchParams.set("callback", `${new URL(request.url).origin}${flow.callbackPath}`);
-    relay.searchParams.set("operation", flow.operation);
-    relay.searchParams.set("state", state);
-    relay.searchParams.set("code_challenge", codeChallenge);
-    return relay;
-  }
-
   const target = new URL(AUTHORIZATION_ENDPOINT);
   target.searchParams.set("client_id", config.clientId);
   target.searchParams.set("redirect_uri", config.redirectUri);
@@ -69,14 +52,17 @@ export function cloudflareAuthorizationUrl(
   target.searchParams.set("state", state);
   target.searchParams.set("code_challenge", codeChallenge);
   target.searchParams.set("code_challenge_method", "S256");
-  target.searchParams.set("scope", hqbaseProductConfig.cloudflareOAuthScopes[flow.operation]);
+  target.searchParams.set(
+    "scope",
+    sovereignMailProductConfig.cloudflareOAuthScopes[flow.operation]
+  );
   return target;
 }
 
 export function oauthClientId(
   env: Pick<OAuthConfigEnv, "CLOUDFLARE_OAUTH_CLIENT_ID" | "CLOUDFLARE_OAUTH_MODE">
 ): string {
-  if (oauthMode(env) === "official") return hqbaseProductConfig.cloudflareOAuthClientId;
+  oauthMode(env);
   const clientId = env.CLOUDFLARE_OAUTH_CLIENT_ID?.trim();
   if (!clientId || clientId.length > 256) {
     throw invalidOAuthConfig("Customer-managed OAuth requires a valid CLOUDFLARE_OAUTH_CLIENT_ID.");
@@ -89,9 +75,11 @@ export function isInvalidOAuthConfig(error: unknown): error is AppError {
 }
 
 function oauthMode(env: Pick<OAuthConfigEnv, "CLOUDFLARE_OAUTH_MODE">): CloudflareOAuthMode {
-  const value = env.CLOUDFLARE_OAUTH_MODE?.trim() || "official";
-  if (value !== "official" && value !== "customer") {
-    throw invalidOAuthConfig('CLOUDFLARE_OAUTH_MODE must be "official" or "customer".');
+  const value = env.CLOUDFLARE_OAUTH_MODE?.trim() || "customer";
+  if (value !== "customer") {
+    throw invalidOAuthConfig(
+      'Sovereign Mail supports only customer-managed OAuth; CLOUDFLARE_OAUTH_MODE must be "customer".'
+    );
   }
   return value;
 }

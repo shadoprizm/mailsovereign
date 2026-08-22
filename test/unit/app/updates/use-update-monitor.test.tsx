@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { announcePwaUpdateReady } from "@/features/pwa/update-ready";
 import type { UpdateStatus } from "@/features/updates/types";
+import { beginUpdateProgress } from "@/features/updates/update-progress";
 import { useUpdateMonitor } from "@/features/updates/use-update-monitor";
 import { flushHookEffects, renderHook } from "../render-hook";
 
@@ -15,7 +16,7 @@ vi.mock("@/features/updates/api", () => ({
 }));
 
 const status: UpdateStatus = {
-  product: "hqbase",
+  product: "sovereign-mail",
   installedVersion: "0.1.22",
   installedSchemaVersion: 5,
   channel: "stable",
@@ -26,7 +27,7 @@ const status: UpdateStatus = {
     version: "0.1.23",
     schemaVersion: 5,
     publishedAt: "2026-07-29T00:00:00.000Z",
-    notesUrl: "https://github.com/HQBase/hqbase/releases/tag/v0.1.23"
+    notesUrl: "https://github.com/shadoprizm/mailsovereign/releases/tag/v0.1.23"
   }
 };
 
@@ -58,6 +59,20 @@ describe("useUpdateMonitor", () => {
     await flushHookEffects(() => window.dispatchEvent(new Event("focus")));
     expect(mocks.getUpdateStatus).toHaveBeenCalledTimes(2);
     await hook.unmount();
-    document.documentElement.removeAttribute("data-hqbase-update-ready");
+    document.documentElement.removeAttribute("data-sovereign-mail-update-ready");
+  });
+
+  it("clears inherited update state when releases are disabled for a customized product", async () => {
+    mocks.getUpdateStatus.mockClear();
+    beginUpdateProgress("upstream-build");
+
+    const hook = await renderHook(() => useUpdateMonitor(true, false), undefined);
+    await flushHookEffects();
+
+    expect(hook.result.status).toBeNull();
+    expect(hook.result.progress).toBeNull();
+    expect(mocks.getUpdateStatus).not.toHaveBeenCalled();
+    expect(window.sessionStorage.length).toBe(0);
+    await hook.unmount();
   });
 });

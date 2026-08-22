@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-const resetSql = readFileSync(path.join(rootDir, "scripts/hqbase/reset-d1.sql"), "utf8");
+const resetSql = readFileSync(path.join(rootDir, "scripts/sovereign-mail/reset-d1.sql"), "utf8");
 const packageJson = JSON.parse(readFileSync(path.join(rootDir, "package.json"), "utf8"));
 
 describe("local D1 reset", () => {
@@ -24,7 +24,7 @@ describe("local D1 reset", () => {
     const command = packageJson.scripts["db:reset:local"];
     expect(command.match(/--local/g)).toHaveLength(2);
     expect(command).not.toContain("--remote");
-    expect(command).toContain("scripts/hqbase/reset-d1.sql");
+    expect(command).toContain("scripts/sovereign-mail/reset-d1.sql");
   });
 });
 

@@ -26,7 +26,7 @@ export function validateManifest(manifest) {
     typeof manifest.name !== "string" ||
     manifest.name.length === 0
   ) {
-    throw new Error("The PWA manifest is missing its installable HQBase identity.");
+    throw new Error("The PWA manifest is missing its installable Sovereign Mail identity.");
   }
 
   const icons = Array.isArray(manifest.icons) ? manifest.icons : [];
@@ -42,7 +42,7 @@ export function validateManifest(manifest) {
 }
 
 export function renderServiceWorker({ cacheName, precacheUrls }) {
-  return `const CACHE_PREFIX = "hqbase-pwa-";
+  return `const CACHE_PREFIX = "sovereign-mail-pwa-";
 const CACHE_NAME = ${JSON.stringify(cacheName)};
 const PRECACHE_URLS = ${JSON.stringify(precacheUrls, null, 2)};
 
@@ -80,22 +80,22 @@ self.addEventListener("push", (event) => {
       : 0;
   const body =
     unreadCount === 1
-      ? "1 unread message in HQBase"
-      : \`\${unreadCount} unread messages in HQBase\`;
+      ? "1 unread message in Sovereign Mail"
+      : \`\${unreadCount} unread messages in Sovereign Mail\`;
   const tasks = [
     self.registration.showNotification("New email", {
       badge: "/icons/notification-badge.png",
       body,
       data: { url: safeNotificationPath(payload.url) },
       icon: "/icons/icon-192.png",
-      tag: typeof payload.tag === "string" ? payload.tag : "hqbase-new-mail"
+      tag: typeof payload.tag === "string" ? payload.tag : "sovereign-mail-new-mail"
     }),
     self.clients
       .matchAll({ includeUncontrolled: true, type: "window" })
       .then((clients) =>
         Promise.all(
           clients.map((client) =>
-            client.postMessage({ type: "hqbase:push-received", unreadCount })
+            client.postMessage({ type: "sovereign-mail:push-received", unreadCount })
           )
         )
       )
@@ -187,7 +187,7 @@ export async function buildPwa(root = process.cwd()) {
     throw new Error("The PWA offline document is missing from the build.");
   }
 
-  const cacheName = `hqbase-pwa-${packageJson.name}-${packageJson.version}`;
+  const cacheName = `sovereign-mail-pwa-${packageJson.name}-${packageJson.version}`;
   await writeFile(
     path.join(dist, "service-worker.js"),
     renderServiceWorker({ cacheName, precacheUrls })

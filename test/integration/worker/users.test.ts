@@ -10,10 +10,14 @@ import pushMigration from "../../../migrations/0006_push_notifications.sql?raw";
 import userMailPreferencesMigration from "../../../migrations/0007_user_mail_preferences.sql?raw";
 import userOnboardingMigration from "../../../migrations/0008_user_onboarding.sql?raw";
 import loginEmailDomainMigration from "../../../migrations/0009_login_email_domain_isolation.sql?raw";
+import emailSignaturesMigration from "../../../migrations/0015_email_signatures.sql?raw";
+import managedServiceMigration from "../../../migrations/0016_managed_service.sql?raw";
+import aiAccessMigration from "../../../migrations/0017_ai_access.sql?raw";
+import aiWritingProfilesMigration from "../../../migrations/0019_ai_writing_profiles.sql?raw";
 import { createAuth } from "../../../worker/auth/auth";
 import { migrationStatements } from "./migration-statements";
 
-const origin = "https://hqbase.test";
+const origin = "https://sovereign-mail.test";
 let ownerCookie = "";
 
 describe("workspace user onboarding", () => {
@@ -27,7 +31,11 @@ describe("workspace user onboarding", () => {
       pushMigration,
       userMailPreferencesMigration,
       userOnboardingMigration,
-      loginEmailDomainMigration
+      loginEmailDomainMigration,
+      emailSignaturesMigration,
+      managedServiceMigration,
+      aiAccessMigration,
+      aiWritingProfilesMigration
     ]) {
       await applyMigration(migration);
     }
@@ -84,7 +92,7 @@ describe("workspace user onboarding", () => {
       temporaryPassword: string;
       user: { id: string; passwordSetupRequired: boolean };
     };
-    expect(result.temporaryPassword).toMatch(/^Hq![A-Za-z0-9_-]{24}$/);
+    expect(result.temporaryPassword).toMatch(/^Sm![A-Za-z0-9_-]{24}$/);
     expect(result.user.passwordSetupRequired).toBe(true);
 
     const account = await env.DB.prepare(
@@ -283,6 +291,98 @@ describe("workspace user onboarding", () => {
     });
     expect(replay.status).toBe(400);
   });
+
+  it("deletes member personal data without orphaning the workspace", async () => {
+    const ownerAttempt = await SELF.fetch(`${origin}/api/me`, {
+      body: JSON.stringify({ confirmation: "DELETE MY ACCOUNT" }),
+      headers: { "content-type": "application/json", cookie: ownerCookie, origin },
+      method: "DELETE"
+    });
+    expect(ownerAttempt.status).toBe(409);
+    await expect(ownerAttempt.json()).resolves.toMatchObject({
+      error: { code: "OWNER_ACCOUNT_REQUIRED" }
+    });
+
+    const member = await registerAccount(
+      "delete-me@gmail.com",
+      "Delete Me",
+      "delete-member-password-123"
+    );
+    const timestamp = new Date().toISOString();
+    const objectKey = `drafts/${member.id}/draft_delete/attachment_delete`;
+    await env.MAIL_OBJECTS.put(objectKey, "private attachment");
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO drafts (id, user_id, created_at, updated_at)
+         VALUES ('draft_delete', ?, ?, ?)`
+      ).bind(member.id, timestamp, timestamp),
+      env.DB.prepare(
+        `INSERT INTO draft_attachments
+         (id, draft_id, filename, content_type, size_bytes, r2_key, created_at)
+         VALUES ('attachment_delete', 'draft_delete', 'private.txt', 'text/plain', 18, ?, ?)`
+      ).bind(objectKey, timestamp),
+      env.DB.prepare(
+        `INSERT INTO mailbox_grants
+         (mailbox_id, user_id, access_level, created_by, created_at, updated_at)
+         VALUES ('mailbox_users', ?, 'read', ?, ?, ?)`
+      ).bind(member.id, member.id, timestamp, timestamp),
+      env.DB.prepare(
+        `INSERT OR REPLACE INTO retention_policies
+         (mailbox_id, message_days, trash_days, updated_by, updated_at)
+         VALUES ('mailbox_users', NULL, 30, ?, ?)`
+      ).bind(member.id, timestamp),
+      env.DB.prepare(
+        `INSERT INTO ai_writing_profiles (user_id, markdown, created_at, updated_at)
+         VALUES (?, '# Private voice', ?, ?)`
+      ).bind(member.id, timestamp, timestamp)
+    ]);
+
+    const response = await SELF.fetch(`${origin}/api/me`, {
+      body: JSON.stringify({ confirmation: "DELETE MY ACCOUNT" }),
+      headers: { "content-type": "application/json", cookie: member.cookie, origin },
+      method: "DELETE"
+    });
+    expect(response.status, await response.clone().text()).toBe(204);
+    expect(await env.MAIL_OBJECTS.get(objectKey)).toBeNull();
+    const deletedUser = await env.DB.prepare(
+      `SELECT name, email, role, banned, banReason FROM "user" WHERE id = ?`
+    )
+      .bind(member.id)
+      .first<{
+        name: string;
+        email: string;
+        role: string;
+        banned: number;
+        banReason: string;
+      }>();
+    expect(deletedUser).toMatchObject({
+      name: "Deleted user",
+      role: "member",
+      banned: 1,
+      banReason: "account_deleted"
+    });
+    expect(deletedUser?.email).toMatch(/^deleted\+[0-9a-f-]+@invalid\.example$/);
+    expect(
+      await env.DB.prepare("SELECT id FROM drafts WHERE user_id = ?").bind(member.id).first()
+    ).toBeNull();
+    expect(
+      await env.DB.prepare("SELECT id FROM account WHERE userId = ?").bind(member.id).first()
+    ).toBeNull();
+    expect(
+      await env.DB.prepare("SELECT user_id FROM ai_writing_profiles WHERE user_id = ?")
+        .bind(member.id)
+        .first()
+    ).toBeNull();
+    const retention = await env.DB.prepare(
+      "SELECT updated_by FROM retention_policies WHERE mailbox_id = 'mailbox_users'"
+    ).first<{ updated_by: string }>();
+    expect(retention?.updated_by).not.toBe(member.id);
+
+    const revoked = await SELF.fetch(`${origin}/api/me`, {
+      headers: { cookie: member.cookie }
+    });
+    expect(revoked.status).toBe(401);
+  });
 });
 
 function createUser(input: {
@@ -306,6 +406,26 @@ async function signIn(email: string, password: string): Promise<string> {
   });
   if (!response.ok) throw new Error(await response.text());
   return extractSessionCookie(response);
+}
+
+async function registerAccount(
+  email: string,
+  name: string,
+  password: string
+): Promise<{ id: string; cookie: string }> {
+  const response = await createAuth(env, new Request(`${origin}/api/auth/sign-up/email`)).handler(
+    new Request(`${origin}/api/auth/sign-up/email`, {
+      body: JSON.stringify({ email, name, password, rememberMe: false }),
+      headers: { "content-type": "application/json", origin },
+      method: "POST"
+    })
+  );
+  expect(response.status, await response.clone().text()).toBe(200);
+  const user = await env.DB.prepare('SELECT id FROM "user" WHERE email = ?')
+    .bind(email)
+    .first<{ id: string }>();
+  if (!user) throw new Error("Registered account was not stored.");
+  return { id: user.id, cookie: extractSessionCookie(response) };
 }
 
 function extractSessionCookie(response: Response): string {

@@ -38,15 +38,26 @@ export type ImapFailureReason =
   | "malformed"
   | "message_too_large";
 
+export type ImapFailureDiagnostic =
+  | "raw_identity_mismatch"
+  | "raw_length_mismatch"
+  | "raw_literal_missing"
+  | "raw_size_invalid"
+  | "raw_size_missing"
+  | "raw_uid_mismatch"
+  | "raw_uid_missing";
+
 // The physical adapter intentionally collapses provider detail before it
 // crosses the protocol port. Remote responses can contain credentials or mail.
 export class ImapClientError extends Error {
   readonly reason: ImapFailureReason;
+  readonly diagnostic: ImapFailureDiagnostic | null;
 
-  constructor(reason: ImapFailureReason) {
+  constructor(reason: ImapFailureReason, diagnostic: ImapFailureDiagnostic | null = null) {
     super("The IMAP client request failed.");
     this.name = "ImapClientError";
     this.reason = reason;
+    this.diagnostic = diagnostic;
   }
 }
 

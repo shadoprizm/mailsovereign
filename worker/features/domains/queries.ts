@@ -2,6 +2,19 @@ import { newId, nowIso } from "../../db/client";
 import { assertDomainUnusedByLoginEmails } from "../../security/login-email";
 import type { CatchAllPolicy, DomainStatus, MailDomain, MailDomainRow } from "./types";
 
+const mailDomainSelection = `SELECT domain.*,
+  CASE WHEN
+    NOT EXISTS (
+      SELECT 1 FROM mailbox_addresses address
+      WHERE address.mail_domain_id = domain.id
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM mailboxes mailbox
+      WHERE lower(substr(mailbox.address, instr(mailbox.address, '@') + 1)) = domain.name
+    )
+  THEN 1 ELSE 0 END AS can_remove
+  FROM mail_domains domain`;
+
 export function mapMailDomain(row: MailDomainRow): MailDomain {
   return {
     id: row.id,
@@ -13,6 +26,7 @@ export function mapMailDomain(row: MailDomainRow): MailDomain {
     dnsStatus: row.dns_status,
     catchAllPolicy: row.catch_all_policy,
     catchAllMailboxId: row.catch_all_mailbox_id,
+    canRemove: row.can_remove === 1,
     isEnabled: row.is_enabled === 1,
     lastErrorCode: row.last_error_code,
     verifiedAt: row.verified_at,
@@ -22,10 +36,20 @@ export function mapMailDomain(row: MailDomainRow): MailDomain {
 }
 
 export async function listMailDomains(db: D1Database): Promise<MailDomain[]> {
-  const rows = await db
-    .prepare("SELECT * FROM mail_domains ORDER BY is_enabled DESC, name")
-    .all<MailDomainRow>();
-  return rows.results.map(mapMailDomain);
+  const [rows, snapshotRows] = await Promise.all([
+    db
+      .prepare(`${mailDomainSelection} ORDER BY domain.is_enabled DESC, domain.name`)
+      .all<MailDomainRow>(),
+    db
+      .prepare("SELECT DISTINCT mail_domain_id FROM domain_dns_snapshots")
+      .all<{ mail_domain_id: string }>()
+      .catch(() => ({ results: [] }))
+  ]);
+  const domainsWithSnapshots = new Set(snapshotRows.results.map((row) => row.mail_domain_id));
+  return rows.results.map((row) => {
+    const domain = mapMailDomain(row);
+    return domainsWithSnapshots.has(domain.id) ? { ...domain, canRemove: false } : domain;
+  });
 }
 
 export async function findMailDomainByName(
@@ -33,7 +57,7 @@ export async function findMailDomainByName(
   name: string
 ): Promise<MailDomain | null> {
   const row = await db
-    .prepare("SELECT * FROM mail_domains WHERE name = ?")
+    .prepare(`${mailDomainSelection} WHERE domain.name = ?`)
     .bind(name.toLowerCase())
     .first<MailDomainRow>();
   return row ? mapMailDomain(row) : null;
@@ -41,10 +65,33 @@ export async function findMailDomainByName(
 
 export async function findMailDomainById(db: D1Database, id: string): Promise<MailDomain | null> {
   const row = await db
-    .prepare("SELECT * FROM mail_domains WHERE id = ?")
+    .prepare(`${mailDomainSelection} WHERE domain.id = ?`)
     .bind(id)
     .first<MailDomainRow>();
   return row ? mapMailDomain(row) : null;
+}
+
+export async function deleteMailDomainWhenUnused(db: D1Database, id: string): Promise<boolean> {
+  const result = await db
+    .prepare(
+      `DELETE FROM mail_domains
+       WHERE id = ?
+         AND NOT EXISTS (
+           SELECT 1 FROM mailbox_addresses
+           WHERE mailbox_addresses.mail_domain_id = mail_domains.id
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM mailboxes
+           WHERE lower(substr(mailboxes.address, instr(mailboxes.address, '@') + 1)) = mail_domains.name
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM domain_dns_snapshots
+           WHERE domain_dns_snapshots.mail_domain_id = mail_domains.id
+         )`
+    )
+    .bind(id)
+    .run();
+  return (result.meta.changes ?? 0) > 0;
 }
 
 export async function upsertMailDomain(

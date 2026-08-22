@@ -18,7 +18,7 @@ export function deploySource(cwd, options = {}) {
     "deploy",
     "--keep-vars",
     "--var",
-    `HQBASE_WORKER_NAME:${workerName}`
+    `SOVEREIGN_MAIL_WORKER_NAME:${workerName}`
   ];
   if (options.releaseTag) deployArgs.push("--tag", options.releaseTag);
 
@@ -49,17 +49,20 @@ export function deploySource(cwd, options = {}) {
   }
 
   if (missingSecrets.includes("BETTER_AUTH_SECRET")) {
-    deployArgs.push("--var", `HQBASE_INSTALLATION_ID:${options.randomUUID?.() ?? randomUUID()}`);
+    deployArgs.push(
+      "--var",
+      `SOVEREIGN_MAIL_INSTALLATION_ID:${options.randomUUID?.() ?? randomUUID()}`
+    );
   }
 
   // The file below holds the auth secret and VAPID keys for the duration of one deploy, so the
   // directory has to exclude other accounts before anything is written into it.
-  const workspace = createRestrictedDirectory("hqbase-secrets-");
+  const workspace = createRestrictedDirectory("sovereign-mail-secrets-");
   const secretsFile = resolve(workspace, "secrets.json");
   try {
     const secrets = {};
     if (missingSecrets.includes("BETTER_AUTH_SECRET")) {
-      const configuredSecret = process.env.HQBASE_AUTH_SECRET;
+      const configuredSecret = process.env.SOVEREIGN_MAIL_AUTH_SECRET;
       const bytes = configuredSecret ? null : (options.randomBytes ?? randomBytes)(32);
       secrets.BETTER_AUTH_SECRET = configuredSecret ?? bytes?.toString("base64url");
     }
@@ -67,8 +70,8 @@ export function deploySource(cwd, options = {}) {
       missingSecrets.includes("VAPID_PUBLIC_KEY") ||
       missingSecrets.includes("VAPID_PRIVATE_KEY")
     ) {
-      const configuredPublicKey = process.env.HQBASE_VAPID_PUBLIC_KEY;
-      const configuredPrivateKey = process.env.HQBASE_VAPID_PRIVATE_KEY;
+      const configuredPublicKey = process.env.SOVEREIGN_MAIL_VAPID_PUBLIC_KEY;
+      const configuredPrivateKey = process.env.SOVEREIGN_MAIL_VAPID_PRIVATE_KEY;
       const generated =
         configuredPublicKey && configuredPrivateKey
           ? { publicKey: configuredPublicKey, privateKey: configuredPrivateKey }

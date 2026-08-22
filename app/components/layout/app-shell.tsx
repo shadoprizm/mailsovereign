@@ -100,7 +100,7 @@ export function AppShell(props: AppShellProps): React.ReactElement {
     <div className="relative flex h-screen h-[100dvh] touch-manipulation overflow-hidden bg-background pt-[env(safe-area-inset-top)] text-foreground">
       {desktopShell ? (
         <ResizablePanelGroup
-          id="hqbase-desktop-shell"
+          id="sovereign-mail-desktop-shell"
           onLayoutChanged={() => {
             const size = sidebarPanelRef.current?.getSize();
             if (!size) return;

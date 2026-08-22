@@ -48,7 +48,7 @@ export function useSetupFlow(onComplete: () => void) {
 
   React.useEffect(() => {
     localStorage.setItem(
-      "hqb_setup_draft_v1",
+      "sovereign_mail_setup_draft_v1",
       JSON.stringify({
         activeStep,
         defaultFromMailboxAddress,
@@ -138,7 +138,7 @@ export function useSetupFlow(onComplete: () => void) {
     setIsPending(true);
     try {
       await bootstrapSetup(input);
-      localStorage.removeItem("hqb_setup_draft_v1");
+      localStorage.removeItem("sovereign_mail_setup_draft_v1");
       toast.success("Sovereign Mail is ready.");
       onComplete();
     } catch (error) {
@@ -223,10 +223,9 @@ function readSetupDraft(): {
   ownerName: string;
 } | null {
   try {
-    const value = JSON.parse(localStorage.getItem("hqb_setup_draft_v1") ?? "null") as Record<
-      string,
-      unknown
-    > | null;
+    const value = JSON.parse(
+      localStorage.getItem("sovereign_mail_setup_draft_v1") ?? "null"
+    ) as Record<string, unknown> | null;
     if (!value || !Array.isArray(value.mailboxes)) return null;
     return {
       activeStep: Math.min(MAILBOX_STEP, Math.max(ACCESS_STEP, Number(value.activeStep) || 0)),

@@ -8,20 +8,25 @@ export const mailFolders = [
 ] as const;
 
 export const draftFolder = { id: "drafts", label: "Drafts", path: "drafts" } as const;
+export const contactsFolder = { id: "contacts", label: "Contacts", path: "contacts" } as const;
 
 export const folders = [
   ...mailFolders,
   draftFolder,
+  contactsFolder,
   { id: "settings", label: "Settings" }
 ] as const;
 
 export const settingsTabs = [
   "mailboxes",
+  "signatures",
   "users",
   "domains",
   "connections",
   "notifications",
   "updates",
+  "ai",
+  "account",
   "debug"
 ] as const;
 
@@ -32,6 +37,7 @@ export type SettingsTabId = (typeof settingsTabs)[number];
 export type AppRoute =
   | { kind: "mail"; folder: MailFolderId; messageId: string | null }
   | { kind: "drafts"; draftId: string | null }
+  | { kind: "contacts" }
   | { kind: "settings"; tab: SettingsTabId };
 
 const publicAuthenticationPaths = new Set(["/set-password"]);
@@ -44,11 +50,12 @@ const legacySettingsTabs: Record<string, SettingsTabId> = {
   access: "mailboxes",
   domains: "domains",
   general: "debug",
+  service: "ai",
   updates: "updates"
 };
 
 export function readAppRoute(input: string | URL): AppRoute {
-  const url = input instanceof URL ? input : new URL(input, "https://hqbase.local");
+  const url = input instanceof URL ? input : new URL(input, "https://sovereign-mail.local");
   const legacySettings = url.searchParams.get("settings");
   if (legacySettings) {
     const tab = readSettingsTab(legacySettings) ?? legacySettingsTabs[legacySettings];
@@ -68,6 +75,8 @@ export function readAppRoute(input: string | URL): AppRoute {
     };
   }
 
+  if (segments[0] === contactsFolder.path) return { kind: "contacts" };
+
   const folder = readMailFolder(segments[0]);
   if (!folder) return { kind: "mail", folder: "inbox", messageId: null };
 
@@ -80,6 +89,7 @@ export function readAppRoute(input: string | URL): AppRoute {
 
 export function appRoutePath(route: AppRoute): string {
   if (route.kind === "settings") return `/settings/${route.tab}`;
+  if (route.kind === "contacts") return `/${contactsFolder.path}`;
   if (route.kind === "drafts") {
     const base = `/${draftFolder.path}`;
     return route.draftId ? `${base}/${encodeURIComponent(route.draftId)}` : base;

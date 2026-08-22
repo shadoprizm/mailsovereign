@@ -2,7 +2,9 @@ import { Paperclip, Trash2 } from "lucide-react";
 import type * as React from "react";
 
 import { Button } from "@/components/ui/button";
+import { ComposeAi } from "@/features/ai/compose-ai";
 import type { DraftAttachment } from "@/features/drafts/types";
+import type { EmailSignature, SignatureChoice } from "@/features/signatures/types";
 import { cn } from "@/lib/cn";
 import { AttachmentList } from "./attachment-list";
 import { ComposeFields, type SendingIdentity } from "./compose-fields";
@@ -12,6 +14,7 @@ import { RichEmailEditor } from "./rich-email-editor";
 
 type ComposeFormProps = {
   attachments: DraftAttachment[];
+  aiCurrentText: string;
   bcc: string;
   cc: string;
   formId: string;
@@ -19,14 +22,20 @@ type ComposeFormProps = {
   html: string;
   identities: SendingIdentity[];
   isPending: boolean;
+  messageId: string | null;
   mode: ComposeMode;
   presentation: "window" | "thread";
   ready: boolean;
   sendDisabled: boolean;
   subject: string;
+  signatures: EmailSignature[];
+  signatureChoice: SignatureChoice;
+  defaultSignatureName: string | null;
+  discardDisabled: boolean;
   threadContext?: React.ReactNode;
   to: string;
   onDiscard: () => void;
+  onUseAiProposal: (text: string) => void;
   onEditorChange: (html: string, text: string) => void;
   onFiles: (files: File[]) => void;
   onRemoveAttachment: (attachment: DraftAttachment) => void;
@@ -34,6 +43,7 @@ type ComposeFormProps = {
   onSetCc: (value: string) => void;
   onSetFrom: (value: string) => void;
   onSetSubject: (value: string) => void;
+  onSetSignatureChoice: (value: SignatureChoice) => void;
   onSetTo: (value: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 };
@@ -55,30 +65,49 @@ export function ComposeForm(props: ComposeFormProps): React.ReactElement {
           onKeyDownCapture={(event) => submitComposeOnShortcut(event, props.sendDisabled)}
           onSubmit={props.onSubmit}
         >
-          <ComposeFields
-            identities={props.identities}
-            mode={props.mode}
-            from={props.from}
-            to={props.to}
-            cc={props.cc}
-            bcc={props.bcc}
-            subject={props.subject}
-            setFrom={props.onSetFrom}
-            setTo={props.onSetTo}
-            setCc={props.onSetCc}
-            setBcc={props.onSetBcc}
-            setSubject={props.onSetSubject}
-          />
-          <RichEmailEditor
-            contained={props.presentation === "window"}
-            html={props.html}
-            onFiles={props.onFiles}
-            onChange={props.onEditorChange}
-          />
-          <AttachmentList attachments={props.attachments} onRemove={props.onRemoveAttachment} />
+          <div
+            className={cn(
+              props.presentation === "window" && "min-h-0 flex-1 overflow-y-auto overscroll-contain"
+            )}
+          >
+            <ComposeFields
+              identities={props.identities}
+              mode={props.mode}
+              from={props.from}
+              to={props.to}
+              cc={props.cc}
+              bcc={props.bcc}
+              subject={props.subject}
+              signatures={props.signatures}
+              signatureChoice={props.signatureChoice}
+              defaultSignatureName={props.defaultSignatureName}
+              setFrom={props.onSetFrom}
+              setTo={props.onSetTo}
+              setCc={props.onSetCc}
+              setBcc={props.onSetBcc}
+              setSubject={props.onSetSubject}
+              setSignatureChoice={props.onSetSignatureChoice}
+            />
+            <ComposeAi
+              currentText={props.aiCurrentText}
+              from={props.from}
+              messageId={props.messageId}
+              mode={props.mode}
+              subject={props.subject}
+              to={splitAiRecipients(props.to)}
+              onUseProposal={props.onUseAiProposal}
+            />
+            <RichEmailEditor
+              contained={false}
+              html={props.html}
+              onFiles={props.onFiles}
+              onChange={props.onEditorChange}
+            />
+            <AttachmentList attachments={props.attachments} onRemove={props.onRemoveAttachment} />
+          </div>
           <footer
             className={cn(
-              "flex items-center justify-between gap-2 border-t bg-background/50 px-5 py-3",
+              "flex shrink-0 items-center justify-between gap-2 border-t bg-background/50 px-5 py-3",
               props.presentation === "window" &&
                 "pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-3"
             )}
@@ -108,6 +137,7 @@ export function ComposeForm(props: ComposeFormProps): React.ReactElement {
             </div>
             <Button
               aria-label="Discard draft"
+              disabled={props.discardDisabled}
               size="icon"
               type="button"
               variant="ghost"
@@ -128,4 +158,11 @@ export function ComposeForm(props: ComposeFormProps): React.ReactElement {
       ) : null}
     </>
   );
+}
+
+function splitAiRecipients(value: string): string[] {
+  return value
+    .split(/[\n,]/)
+    .map((recipient) => recipient.trim())
+    .filter((recipient) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient));
 }

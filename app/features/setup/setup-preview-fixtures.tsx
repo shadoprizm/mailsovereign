@@ -33,7 +33,8 @@ export const zones: CloudflareZone[] = [
     status: "active",
     type: "full",
     accountId: "account-1",
-    accountName: "Northstar Studio"
+    accountName: "Northstar Studio",
+    nameServers: ["merlin.ns.cloudflare.com", "violet.ns.cloudflare.com"]
   },
   {
     id: "zone-secondary",
@@ -41,7 +42,8 @@ export const zones: CloudflareZone[] = [
     status: "active",
     type: "full",
     accountId: "account-1",
-    accountName: "Northstar Studio"
+    accountName: "Northstar Studio",
+    nameServers: ["merlin.ns.cloudflare.com", "violet.ns.cloudflare.com"]
   }
 ];
 
@@ -110,11 +112,13 @@ export function renderPreviewFixture(input: FixtureInput): React.ReactNode {
     const readinessError = input.state === "domain-error";
     return (
       <DomainStep
+        accounts={[{ id: "account-1", name: "Northstar Studio" }]}
         appHostname={`${input.appSubdomain}.${input.portalZone?.name}`}
         appSubdomain={input.appSubdomain}
         connectionError={
           readinessError ? "Cloudflare needs attention on one or more checks below." : null
         }
+        createZone={() => Promise.resolve(zones[0] as CloudflareZone)}
         errors={{}}
         isLoading={false}
         onBack={() => undefined}
@@ -124,9 +128,11 @@ export function renderPreviewFixture(input: FixtureInput): React.ReactNode {
             selected ? [...current, zoneId] : current.filter((id) => id !== zoneId)
           )
         }
+        onZoneChange={() => undefined}
         portalZone={input.portalZone}
         portalZoneId={input.portalZoneId}
         results={readinessError ? readinessFailureFixture() : []}
+        refreshZone={() => Promise.resolve(zones[0] as CloudflareZone)}
         selectedZoneIds={input.selectedZoneIds}
         selectedZones={input.selectedZones}
         setAppSubdomain={input.setAppSubdomain}
@@ -226,7 +232,7 @@ function readinessFailureFixture(): ConfiguredDomain[] {
         ],
         status: {
           zone,
-          workerName: "hqbase-preview",
+          workerName: "sovereign-mail-preview",
           routing: {
             enabled: true,
             status: "active",
@@ -237,7 +243,7 @@ function readinessFailureFixture(): ConfiguredDomain[] {
           catchAll: {
             enabled: true,
             configuredForWorker: true,
-            workerNames: ["hqbase-preview"],
+            workerNames: ["sovereign-mail-preview"],
             error: null
           },
           sending: {

@@ -5,9 +5,11 @@ import { accessibleMailboxIds, requireMailboxAccess } from "../../auth/mailbox-a
 import { requireAuthContext } from "../../auth/session";
 import type { HonoApp } from "../../lib/env";
 import { parseWith } from "../../lib/validation";
+import { recordAudit } from "../audit/service";
 
 import type { MessageAction } from "./actions";
 import { listConversationPage, updateConversationAction } from "./conversation-queries";
+import { deleteTrashedConversation } from "./deletion";
 import { getMessageMailboxId } from "./queries";
 import { conversationFolders } from "./types";
 
@@ -31,6 +33,33 @@ conversationRoutes.get("/", async (c) => {
       mailboxIds
     })
   );
+});
+
+conversationRoutes.delete("/:id", async (c) => {
+  const auth = await requireAuthContext(c.env, c.req.raw);
+  await requireMailboxAccess(
+    c.env.DB,
+    auth.user.id,
+    auth.user.role,
+    await getMessageMailboxId(c.env.DB, c.req.param("id")),
+    "agent"
+  );
+  const mailboxIds = await accessibleMailboxIds(c.env.DB, auth.user.id, auth.user.role, "agent");
+  const deleted = await deleteTrashedConversation(c.env, {
+    mailboxIds,
+    messageId: c.req.param("id")
+  });
+  await recordAudit(c.env.DB, {
+    correlationId: c.get("correlationId"),
+    actorType: "user",
+    actorId: auth.user.id,
+    action: "conversation.delete",
+    resourceType: "conversation",
+    resourceId: deleted.threadId,
+    outcome: "success",
+    metadata: { affected: deleted.affected }
+  });
+  return c.json(deleted);
 });
 
 for (const action of actions) {

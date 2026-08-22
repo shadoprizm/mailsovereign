@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useDraftAutosave } from "@/features/compose/use-draft-autosave";
 import type { Draft } from "@/features/drafts/types";
 import { flushHookEffects, renderHook } from "../render-hook";
@@ -22,6 +22,8 @@ const draft: Draft = {
   mailboxId: "mailbox-1",
   replyToMessageId: null,
   forwardOfMessageId: null,
+  signatureMode: "none",
+  signatureId: null,
   from: "sender@example.com",
   to: ["reader@example.com"],
   cc: [],
@@ -40,7 +42,7 @@ function options(overrides: Partial<Parameters<typeof useDraftAutosave>[0]> = {}
     initialized: { current: true },
     draft,
     identities: [{ mailboxId: "mailbox-1", address: "sender@example.com" }],
-    recoveryKey: "hqbase:draft-recovery:test",
+    recoveryKey: "sovereign-mail:draft-recovery:test",
     replyToMessageId: null,
     forwardOfMessageId: null,
     from: draft.from,
@@ -50,6 +52,8 @@ function options(overrides: Partial<Parameters<typeof useDraftAutosave>[0]> = {}
     subject: draft.subject,
     text: draft.text,
     html: draft.html,
+    signatureMode: draft.signatureMode,
+    signatureId: draft.signatureId,
     setDraft: vi.fn(),
     setSaveState: vi.fn(),
     ...overrides
@@ -57,6 +61,12 @@ function options(overrides: Partial<Parameters<typeof useDraftAutosave>[0]> = {}
 }
 
 describe("useDraftAutosave", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mocks.toastError.mockReset();
+    mocks.updateDraft.mockReset();
+  });
+
   it("persists recovery state and saves the latest initialized draft after the debounce", async () => {
     vi.useFakeTimers();
     const nextDraft = { ...draft, subject: "Changed", version: 2 };
@@ -72,7 +82,7 @@ describe("useDraftAutosave", () => {
     });
     await hook.rerender(changed);
 
-    expect(localStorage.getItem(initial.recoveryKey)).toContain('"subject":"Changed"');
+    expect(localStorage.getItem(initial.recoveryKey as string)).toContain('"subject":"Changed"');
     await flushHookEffects(() => {
       vi.advanceTimersByTime(800);
     });
@@ -86,7 +96,55 @@ describe("useDraftAutosave", () => {
     );
     expect(changed.setDraft).toHaveBeenCalledWith(nextDraft);
     expect(changed.setSaveState).toHaveBeenLastCalledWith("saved");
-    expect(localStorage.getItem(initial.recoveryKey)).toBeNull();
+    expect(localStorage.getItem(initial.recoveryKey as string)).toBeNull();
+
+    await hook.unmount();
+    vi.useRealTimers();
+  });
+
+  it("keeps an unfinished recipient in local recovery without showing a validation error", async () => {
+    vi.useFakeTimers();
+    const initial = options();
+    const hook = await renderHook(useDraftAutosave, initial);
+    hook.result.initializeAutosave(draft);
+    const typing = options({
+      open: true,
+      to: "reader@",
+      setDraft: initial.setDraft,
+      setSaveState: initial.setSaveState
+    });
+    await hook.rerender(typing);
+
+    await flushHookEffects(() => {
+      vi.advanceTimersByTime(800);
+    });
+
+    expect(localStorage.getItem(initial.recoveryKey as string)).toContain('"to":"reader@"');
+    expect(mocks.updateDraft).not.toHaveBeenCalled();
+    expect(mocks.toastError).not.toHaveBeenCalled();
+    expect(typing.setSaveState).toHaveBeenLastCalledWith("editing-recipient");
+
+    const completedDraft = {
+      ...draft,
+      to: ["reader@example.com", "another@example.com"],
+      version: 2
+    };
+    mocks.updateDraft.mockResolvedValue(completedDraft);
+    await hook.rerender({
+      ...typing,
+      to: "reader@example.com, another@example.com"
+    });
+    await flushHookEffects(() => {
+      vi.advanceTimersByTime(800);
+    });
+
+    expect(mocks.updateDraft).toHaveBeenCalledWith(
+      draft.id,
+      expect.objectContaining({
+        to: ["reader@example.com", "another@example.com"]
+      })
+    );
+    expect(typing.setSaveState).toHaveBeenLastCalledWith("saved");
 
     await hook.unmount();
     vi.useRealTimers();

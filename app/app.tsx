@@ -9,6 +9,7 @@ import {
   TemporaryPasswordSetupPage
 } from "@/features/auth/password-setup-page";
 import type { CurrentUser } from "@/features/auth/types";
+import { deleteDraft } from "@/features/drafts/api";
 import { DraftsPage } from "@/features/drafts/drafts-page";
 import { useDrafts } from "@/features/drafts/use-drafts";
 import { InboxPage } from "@/features/inbox/inbox-page";
@@ -22,6 +23,7 @@ import type { SetupStatus } from "@/features/setup/types";
 import { useUpdateMonitor } from "@/features/updates/use-update-monitor";
 import { listUsers } from "@/features/users/api";
 import type { WorkspaceUser } from "@/features/users/types";
+import { sovereignProductConfig } from "@/lib/product-config";
 import {
   type FolderId,
   isPublicAuthenticationPath,
@@ -38,6 +40,9 @@ const DraftComposeDialog = React.lazy(() =>
     default: module.DraftComposeDialog
   }))
 );
+const ContactsPage = React.lazy(() =>
+  import("@/features/contacts/contacts-page").then((module) => ({ default: module.ContactsPage }))
+);
 
 export function App(): React.ReactElement {
   const invitationSetup = isPublicAuthenticationPath(window.location.pathname);
@@ -51,7 +56,13 @@ export function App(): React.ReactElement {
   const [isLoading, setIsLoading] = React.useState(true);
   const { navigate, route } = useAppRoute(setup?.isComplete);
   const activeFolder: FolderId =
-    route.kind === "settings" ? "settings" : route.kind === "drafts" ? "drafts" : route.folder;
+    route.kind === "settings"
+      ? "settings"
+      : route.kind === "drafts"
+        ? "drafts"
+        : route.kind === "contacts"
+          ? "contacts"
+          : route.folder;
   const selectedId = route.kind === "mail" ? route.messageId : null;
   const selectedDraftId = route.kind === "drafts" ? route.draftId : null;
   const settingsTab: SettingsTabId = route.kind === "settings" ? route.tab : "mailboxes";
@@ -66,8 +77,13 @@ export function App(): React.ReactElement {
     [mailboxes]
   );
   const canManageUpdates =
-    !user?.passwordSetupRequired && (user?.role === "owner" || user?.role === "admin");
-  const updateMonitor = useUpdateMonitor(canManageUpdates);
+    sovereignProductConfig.releaseUpdatesEnabled &&
+    !user?.passwordSetupRequired &&
+    (user?.role === "owner" || user?.role === "admin");
+  const updateMonitor = useUpdateMonitor(
+    canManageUpdates,
+    sovereignProductConfig.releaseUpdatesEnabled
+  );
   const mailSync = useMailSync({
     activeFolder,
     mailboxId,
@@ -117,6 +133,10 @@ export function App(): React.ReactElement {
     if (!user || isLoading || route.kind !== "settings") return;
     const canManage = user.role === "owner" || user.role === "admin";
     const managementOnly = ["domains", "connections", "updates"].includes(route.tab);
+    if (route.tab === "updates" && !sovereignProductConfig.releaseUpdatesEnabled) {
+      navigate({ kind: "settings", tab: "mailboxes" }, true);
+      return;
+    }
     if (!canManage && managementOnly) {
       navigate({ kind: "settings", tab: "mailboxes" }, true);
     }
@@ -190,9 +210,11 @@ export function App(): React.ReactElement {
           navigate(
             folder === "settings"
               ? { kind: "settings", tab: "mailboxes" }
-              : folder === "drafts"
-                ? { kind: "drafts", draftId: null }
-                : { kind: "mail", folder, messageId: null }
+              : folder === "contacts"
+                ? { kind: "contacts" }
+                : folder === "drafts"
+                  ? { kind: "drafts", draftId: null }
+                  : { kind: "mail", folder, messageId: null }
           );
         }}
         onMailboxChange={setMailboxId}
@@ -207,6 +229,7 @@ export function App(): React.ReactElement {
               <SettingsPage
                 activeTab={settingsTab}
                 canManage={user.role === "owner" || user.role === "admin"}
+                isOwner={user.role === "owner"}
                 defaultFromMailboxId={user.defaultFromMailboxId}
                 mailboxes={mailboxes}
                 notifications={mailSync.notifications}
@@ -222,6 +245,10 @@ export function App(): React.ReactElement {
                 updateProgress={updateMonitor.progress}
                 updateStatus={updateMonitor.status}
               />
+            ) : activeFolder === "contacts" ? (
+              <React.Suspense fallback={<FullScreenStatus label="Loading contacts" />}>
+                <ContactsPage search={search} />
+              </React.Suspense>
             ) : activeFolder === "drafts" ? (
               <DraftsPage
                 drafts={draftState.drafts}
@@ -230,6 +257,11 @@ export function App(): React.ReactElement {
                 search={search}
                 selectedId={selectedDraftId}
                 onBack={() => navigate({ kind: "drafts", draftId: null })}
+                onDelete={async (draftId) => {
+                  await deleteDraft(draftId);
+                  if (selectedDraftId === draftId) navigate({ kind: "drafts", draftId: null });
+                  await draftState.refresh();
+                }}
                 onSelect={(draftId) => navigate({ kind: "drafts", draftId })}
               />
             ) : (

@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "hqbase",
+  "name": "sovereign-mail",
   "main": "worker/index.ts",
   "preview_urls": false,
   "compatibility_date": "2026-07-28",
@@ -18,13 +18,17 @@
       "invocation_logs": false
     }
   },
+  "ai": {
+    "binding": "AI",
+    "remote": false
+  },
   "secrets": {
     "required": ["BETTER_AUTH_SECRET"]
   },
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "hqbase",
+      "database_name": "sovereign-mail",
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
     }
@@ -32,22 +36,22 @@
   "r2_buckets": [
     {
       "binding": "MAIL_OBJECTS",
-      "bucket_name": "hqbase-mail"
+      "bucket_name": "sovereign-mail-mail"
     }
   ],
   "queues": {
-    "producers": [{ "binding": "HQBASE_JOBS", "queue": "hqbase-jobs" }],
+    "producers": [{ "binding": "SOVEREIGN_MAIL_JOBS", "queue": "sovereign-mail-jobs" }],
     "consumers": [
       {
-        "queue": "hqbase-jobs",
-        "dead_letter_queue": "hqbase-jobs-dlq",
+        "queue": "sovereign-mail-jobs",
+        "dead_letter_queue": "sovereign-mail-jobs-dlq",
         "max_batch_size": 10,
         "max_batch_timeout": 5,
         "max_retries": 3
       }
     ]
   },
-  "triggers": { "crons": ["17 3 * * *"] },
+  "triggers": { "crons": ["*/5 * * * *", "17 3 * * *"] },
   "send_email": [
     {
       "name": "MAIL_SENDER"

@@ -6,11 +6,11 @@ import { UPDATE_STARTED_EVENT } from "@/features/updates/update-progress";
 
 describe("PWA registration", () => {
   afterEach(() => {
-    document.documentElement.removeAttribute("data-hqbase-update-ready");
+    document.documentElement.removeAttribute("data-sovereign-mail-update-ready");
     vi.unstubAllGlobals();
   });
 
-  it("checks immediately and repeatedly after an HQBase update starts", async () => {
+  it("checks immediately and repeatedly after an Sovereign Mail update starts", async () => {
     const windowListeners = new Map<string, () => void>();
     const intervals: Array<{ callback: () => void; delay: number }> = [];
     const update = vi.fn().mockResolvedValue(undefined);
@@ -79,7 +79,7 @@ describe("PWA registration", () => {
 
     expect(onUpdateReady).toHaveBeenCalledOnce();
     expect(readyListener).toHaveBeenCalledOnce();
-    expect(document.documentElement.hasAttribute("data-hqbase-update-ready")).toBe(true);
+    expect(document.documentElement.hasAttribute("data-sovereign-mail-update-ready")).toBe(true);
 
     unregister();
     window.removeEventListener(PWA_UPDATE_READY_EVENT, readyListener);

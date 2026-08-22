@@ -18,7 +18,14 @@ export async function findAddressIdentity(
      JOIN mailboxes m ON m.id = a.mailbox_id
      JOIN mail_domains d ON d.id = a.mail_domain_id
      WHERE a.address = ? AND ${enabledColumn} = 1 AND d.is_enabled = 1
-       AND ${domainState} = 'ready' LIMIT 1`
+       AND (
+         ${domainState} = 'ready'
+         OR EXISTS (
+           SELECT 1 FROM provider_connections p
+           WHERE p.mailbox_address = a.address AND p.kind = 'imap-smtp'
+             AND p.is_enabled = 1 AND p.verified_at IS NOT NULL
+         )
+       ) LIMIT 1`
     )
     .bind(address.toLowerCase())
     .first<

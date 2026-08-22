@@ -9,5 +9,10 @@ coverage
 playwright-report
 test-results
 .DS_Store
-.hqbase/deployments/*
-!.hqbase/deployments/.gitkeep
+.agents/
+.playwright-cli/
+.playwright-mcp/
+output/
+patches/
+.sovereign-mail/deployments/*
+!.sovereign-mail/deployments/.gitkeep

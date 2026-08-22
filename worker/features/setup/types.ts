@@ -38,6 +38,12 @@ export type CloudflareZone = {
   type: string | null;
   accountId: string | null;
   accountName: string | null;
+  nameServers: string[];
+};
+
+export type CloudflareAccount = {
+  id: string;
+  name: string;
 };
 
 export type CloudflareTokenStatus = {

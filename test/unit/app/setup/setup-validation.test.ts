@@ -18,6 +18,7 @@ const activeZone: CloudflareZone = {
   accountName: "Example",
   id: "zone-1",
   name: "example.com",
+  nameServers: ["merlin.ns.cloudflare.com", "violet.ns.cloudflare.com"],
   status: "active",
   type: "full"
 };
@@ -104,7 +105,7 @@ describe("setup form validation", () => {
     expect(
       hasErrors(
         validateDomain({
-          appSubdomain: "hqbase",
+          appSubdomain: "sovereign-mail",
           selectedZones: [activeZone],
           portalZone: activeZone
         })
@@ -113,7 +114,7 @@ describe("setup form validation", () => {
 
     expect(
       validateDomain({
-        appSubdomain: "hqbase",
+        appSubdomain: "sovereign-mail",
         selectedZones: Array.from({ length: 11 }, (_, index) => ({
           ...activeZone,
           id: `zone-${index}`,

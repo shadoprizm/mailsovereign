@@ -1,9 +1,9 @@
 export const desktopMinimumWidth = 1024;
 export const desktopMinimumHeight = 600;
 
-export const sidebarCollapsedStorageKey = "hqb_desktop_sidebar_collapsed_v1";
-export const sidebarWidthStorageKey = "hqb_desktop_sidebar_width_v1";
-export const conversationListWidthStorageKey = "hqb_desktop_conversation_width_v1";
+export const sidebarCollapsedStorageKey = "sovereign_mail_desktop_sidebar_collapsed_v1";
+export const sidebarWidthStorageKey = "sovereign_mail_desktop_sidebar_width_v1";
+export const conversationListWidthStorageKey = "sovereign_mail_desktop_conversation_width_v1";
 
 export const defaultSidebarWidth = 224;
 export const minimumSidebarWidth = 176;

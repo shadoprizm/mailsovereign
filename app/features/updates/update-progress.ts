@@ -1,6 +1,6 @@
-export const UPDATE_STARTED_EVENT = "hqbase:update-started";
+export const UPDATE_STARTED_EVENT = "sovereign-mail:update-started";
 
-const storageKey = "hqbase:update-progress";
+const storageKey = "sovereign-mail:update-progress";
 const progressLifetimeMs = 30 * 60 * 1000;
 
 export type UpdateProgress = {

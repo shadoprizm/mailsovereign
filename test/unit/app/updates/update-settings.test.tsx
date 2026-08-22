@@ -4,7 +4,7 @@ import type { UpdateStatus } from "@/features/updates/types";
 import { UpdateSettings } from "@/features/updates/update-settings";
 
 const availableStatus: UpdateStatus = {
-  product: "hqbase",
+  product: "sovereign-mail",
   installedVersion: "0.1.2",
   installedSchemaVersion: 2,
   channel: "stable",

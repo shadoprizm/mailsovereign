@@ -11,12 +11,16 @@ describe("compose fields", () => {
         from="support@example.com"
         identities={[{ mailboxId: "mbx_1", address: "support@example.com" }]}
         mode="reply"
+        signatures={[]}
+        signatureChoice={{ mode: "none", signatureId: null }}
+        defaultSignatureName={null}
         subject="Re: Account access"
         to="customer@example.com"
         setBcc={() => undefined}
         setCc={() => undefined}
         setFrom={() => undefined}
         setSubject={() => undefined}
+        setSignatureChoice={() => undefined}
         setTo={() => undefined}
       />
     );
@@ -24,6 +28,9 @@ describe("compose fields", () => {
     expect(html).toContain('aria-label="To"');
     expect(html).toContain('aria-label="Cc"');
     expect(html).toContain('aria-label="Bcc"');
+    expect(html.match(/type="email"/g)).toHaveLength(3);
+    expect(html.match(/multiple=""/g)).toHaveLength(3);
+    expect(html).toContain("Separate multiple addresses with commas.");
     expect(html).not.toContain("Replying to");
   });
 });

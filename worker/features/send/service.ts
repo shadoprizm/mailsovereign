@@ -1,8 +1,9 @@
 import { newId, nowIso } from "../../db/client";
 import type { WorkerEnv } from "../../lib/env";
 import { AppError } from "../../lib/errors";
-import { getDefaultMailTransport } from "../../providers/registry";
+import { getMailTransportForAddress } from "../../providers/resolver";
 import type { OutboundAttachment } from "../../providers/transport";
+import { recordRecentRecipients } from "../contacts/queries";
 import { draftAttachmentObjects } from "../drafts/queries";
 import { findAddressIdentity } from "../mailboxes/address-queries";
 import { findMailboxForSending } from "../mailboxes/queries";
@@ -36,7 +37,7 @@ export async function sendNewMessage(
     text: input.text
   };
   const attachments = await loadAttachments(env, input.attachmentIds, userId);
-  const transport = getDefaultMailTransport(env);
+  const transport = await getMailTransportForAddress(env, input.from);
   const sendResult = await transport.send({
     ...email,
     ...(input.cc.length ? { cc: input.cc } : {}),
@@ -46,7 +47,7 @@ export async function sendNewMessage(
   });
   const threadId = await createThread(env.DB, input.subject, timestamp);
 
-  return storeSentMessage(env, {
+  const stored = await storeSentMessage(env, {
     ...input,
     inReplyTo: null,
     messageId: sendResult.providerMessageId,
@@ -58,6 +59,12 @@ export async function sendNewMessage(
     draftId: input.draftId ?? null,
     userId: userId ?? null
   });
+  if (userId) {
+    await recordRecentRecipients(env.DB, userId, [...input.to, ...input.cc, ...input.bcc]).catch(
+      () => undefined
+    );
+  }
+  return stored;
 }
 
 export async function replyToMessage(
@@ -89,7 +96,7 @@ export async function replyToMessage(
       : { html: undefined, inlineAttachments: [] };
   const body = buildReplyBody(input, original, quoted.html);
   const outgoingAttachments = [...attachments, ...quoted.inlineAttachments];
-  const transport = getDefaultMailTransport(env);
+  const transport = await getMailTransportForAddress(env, input.from);
   const sendResult = await transport.send({
     from: input.from,
     to,
@@ -107,7 +114,7 @@ export async function replyToMessage(
       : {})
   });
 
-  return storeSentMessage(env, {
+  const stored = await storeSentMessage(env, {
     from: input.from,
     to,
     cc: input.cc,
@@ -124,6 +131,12 @@ export async function replyToMessage(
     draftId: input.draftId ?? null,
     userId: userId ?? null
   });
+  if (userId) {
+    await recordRecentRecipients(env.DB, userId, [...to, ...input.cc, ...input.bcc]).catch(
+      () => undefined
+    );
+  }
+  return stored;
 }
 
 async function ensureActiveMailbox(db: D1Database, address: string): Promise<void> {

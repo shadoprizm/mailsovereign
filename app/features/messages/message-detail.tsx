@@ -3,9 +3,12 @@ import * as React from "react";
 
 import { Button } from "@/components/ui/button";
 import { PullToRefresh } from "@/components/ui/pull-to-refresh";
+import { ConversationAi } from "@/features/ai/conversation-ai";
 import type { ComposeMode } from "@/features/compose/compose-state";
 import type { Mailbox } from "@/features/mailboxes/types";
+import type { MailFolderId } from "@/lib/routes";
 import { ConversationMessages } from "./conversation-messages";
+import { DeleteConversationDialog } from "./delete-conversation-dialog";
 import type { MessageDetail as MessageDetailType } from "./types";
 
 const ComposeDialog = React.lazy(() =>
@@ -13,6 +16,7 @@ const ComposeDialog = React.lazy(() =>
 );
 
 type MessageDetailProps = {
+  activeFolder?: MailFolderId;
   defaultFromMailboxId: string | null;
   error?: string | null;
   isLoading?: boolean;
@@ -23,6 +27,7 @@ type MessageDetailProps = {
   onAction: (action: "read" | "unread" | "star" | "unstar" | "archive" | "trash") => void;
   onBack: () => void;
   onDraftsChange?: () => void;
+  onDelete?: () => Promise<void>;
   onRefresh: () => Promise<void> | void;
   onSent: () => void;
 };
@@ -35,6 +40,7 @@ type ThreadComposeState = {
 };
 
 export function MessageDetail({
+  activeFolder = "inbox",
   defaultFromMailboxId,
   error = null,
   isLoading = false,
@@ -45,10 +51,12 @@ export function MessageDetail({
   onAction,
   onBack,
   onDraftsChange,
+  onDelete,
   onRefresh,
   onSent
 }: MessageDetailProps): React.ReactElement {
   const [composeState, setComposeState] = React.useState<ThreadComposeState | null>(null);
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   if (isLoading) {
     return <MessageReaderStatus label="Loading conversation" />;
@@ -72,103 +80,137 @@ export function MessageDetail({
   const isStarred = messages.some((message) => message.starredAt !== null);
 
   return (
-    <article className="flex h-full flex-col bg-background">
-      <div className="shrink-0 border-b bg-background px-3 py-3 sm:px-5">
-        <div className="flex items-start gap-2">
-          {showBack ? (
-            <Button
-              aria-label="Back to messages"
-              className="size-10 shrink-0"
-              size="icon"
-              type="button"
-              variant="ghost"
-              onClick={onBack}
-            >
-              <ArrowLeft />
-            </Button>
-          ) : null}
-          <h1 className="min-w-0 flex-1 break-words pt-2 text-lg font-medium tracking-tight sm:text-xl lg:pt-1">
-            {selected.subject}
-          </h1>
-          <div className="flex shrink-0 flex-wrap gap-0.5 rounded-md border bg-card p-0.5">
-            <IconButton
-              label={isUnread ? "Mark conversation read" : "Mark conversation unread"}
-              onClick={() => onAction(isUnread ? "read" : "unread")}
-            >
-              <MailOpen />
-            </IconButton>
-            <IconButton
-              label={isStarred ? "Unstar conversation" : "Star conversation"}
-              onClick={() => onAction(isStarred ? "unstar" : "star")}
-            >
-              <Star />
-            </IconButton>
-            <IconButton label="Archive conversation" onClick={() => onAction("archive")}>
-              <Archive />
-            </IconButton>
-            <IconButton label="Trash conversation" onClick={() => onAction("trash")}>
-              <Trash2 />
-            </IconButton>
+    <>
+      <article className="flex h-full flex-col bg-background">
+        <div className="shrink-0 border-b bg-background px-3 py-3 sm:px-5">
+          <div className="flex items-start gap-2">
+            {showBack ? (
+              <Button
+                aria-label="Back to messages"
+                className="size-10 shrink-0"
+                size="icon"
+                type="button"
+                variant="ghost"
+                onClick={onBack}
+              >
+                <ArrowLeft />
+              </Button>
+            ) : null}
+            <h1 className="min-w-0 flex-1 break-words pt-2 text-lg font-medium tracking-tight sm:text-xl lg:pt-1">
+              {selected.subject}
+            </h1>
+            <div className="flex shrink-0 flex-wrap gap-0.5 rounded-md border bg-card p-0.5">
+              <IconButton
+                label={isUnread ? "Mark conversation read" : "Mark conversation unread"}
+                onClick={() => onAction(isUnread ? "read" : "unread")}
+              >
+                <MailOpen />
+              </IconButton>
+              <IconButton
+                label={isStarred ? "Unstar conversation" : "Star conversation"}
+                onClick={() => onAction(isStarred ? "unstar" : "star")}
+              >
+                <Star />
+              </IconButton>
+              {activeFolder === "trash" && onDelete ? (
+                <Button
+                  aria-label="Delete conversation permanently"
+                  className="h-9 gap-1.5 px-2 text-destructive hover:text-destructive"
+                  title="Delete permanently"
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  <Trash2 />
+                  <span className="hidden sm:inline">Delete</span>
+                </Button>
+              ) : (
+                <>
+                  <IconButton label="Archive conversation" onClick={() => onAction("archive")}>
+                    <Archive />
+                  </IconButton>
+                  <Button
+                    aria-label="Move conversation to Trash"
+                    className="h-9 gap-1.5 px-2 text-muted-foreground hover:text-foreground"
+                    title="Move to Trash"
+                    type="button"
+                    variant="ghost"
+                    onClick={() => onAction("trash")}
+                  >
+                    <Trash2 />
+                    <span className="hidden sm:inline">Trash</span>
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-      <PullToRefresh className="min-h-0 flex-1" onRefresh={onRefresh}>
-        <ConversationMessages
-          messages={messages}
-          onCompose={(message, mode) => setComposeState({ message, mode })}
+        <PullToRefresh className="min-h-0 flex-1" onRefresh={onRefresh}>
+          <ConversationMessages
+            messages={messages}
+            onCompose={(message, mode) => setComposeState({ message, mode })}
+          />
+          <div className="px-4 pb-8 pt-2 sm:px-6">
+            <ConversationAi key={selected.id} messageId={selected.id} />
+            {composeState ? (
+              <React.Suspense
+                fallback={
+                  <div className="grid min-h-60 place-items-center text-sm text-muted-foreground">
+                    Opening editor…
+                  </div>
+                }
+              >
+                <ComposeDialog
+                  defaultFromMailboxId={defaultFromMailboxId}
+                  key={`${composeState.mode}:${composeState.message.id}`}
+                  mailboxes={mailboxes}
+                  message={composeState.message}
+                  mode={composeState.mode}
+                  open
+                  presentation="thread"
+                  threadContext={<ConversationMessages compact messages={messages} />}
+                  {...(onDraftsChange ? { onDraftsChange } : {})}
+                  onOpenChange={(nextOpen) => {
+                    if (!nextOpen) setComposeState(null);
+                  }}
+                  onSent={onSent}
+                />
+              </React.Suspense>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 lg:flex">
+                <Button
+                  className="h-11 justify-center gap-2 px-5 lg:min-w-32"
+                  size="lg"
+                  type="button"
+                  variant="outline"
+                  onClick={() => setComposeState({ message: replyTarget, mode: "reply" })}
+                >
+                  <Reply />
+                  Reply
+                </Button>
+                <Button
+                  className="h-11 justify-center gap-2 px-5 lg:min-w-32"
+                  size="lg"
+                  type="button"
+                  variant="outline"
+                  onClick={() => setComposeState({ message: selected, mode: "forward" })}
+                >
+                  <Forward />
+                  Forward
+                </Button>
+              </div>
+            )}
+          </div>
+        </PullToRefresh>
+      </article>
+      {onDelete ? (
+        <DeleteConversationDialog
+          open={deleteOpen}
+          onConfirm={onDelete}
+          onOpenChange={setDeleteOpen}
         />
-        <div className="px-4 pb-8 pt-2 sm:px-6">
-          {composeState ? (
-            <React.Suspense
-              fallback={
-                <div className="grid min-h-60 place-items-center text-sm text-muted-foreground">
-                  Opening editor…
-                </div>
-              }
-            >
-              <ComposeDialog
-                defaultFromMailboxId={defaultFromMailboxId}
-                key={`${composeState.mode}:${composeState.message.id}`}
-                mailboxes={mailboxes}
-                message={composeState.message}
-                mode={composeState.mode}
-                open
-                presentation="thread"
-                threadContext={<ConversationMessages compact messages={messages} />}
-                {...(onDraftsChange ? { onDraftsChange } : {})}
-                onOpenChange={(nextOpen) => {
-                  if (!nextOpen) setComposeState(null);
-                }}
-                onSent={onSent}
-              />
-            </React.Suspense>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 lg:flex">
-              <Button
-                className="h-11 justify-center gap-2 px-5 lg:min-w-32"
-                size="lg"
-                type="button"
-                variant="outline"
-                onClick={() => setComposeState({ message: replyTarget, mode: "reply" })}
-              >
-                <Reply />
-                Reply
-              </Button>
-              <Button
-                className="h-11 justify-center gap-2 px-5 lg:min-w-32"
-                size="lg"
-                type="button"
-                variant="outline"
-                onClick={() => setComposeState({ message: selected, mode: "forward" })}
-              >
-                <Forward />
-                Forward
-              </Button>
-            </div>
-          )}
-        </div>
-      </PullToRefresh>
-    </article>
+      ) : null}
+    </>
   );
 }
 

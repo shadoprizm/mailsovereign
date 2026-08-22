@@ -11,6 +11,7 @@ export type MailDomain = {
   dnsStatus: Exclude<DomainStatus, "disabled">;
   catchAllPolicy: CatchAllPolicy;
   catchAllMailboxId: string | null;
+  canRemove: boolean;
   isEnabled: boolean;
   lastErrorCode: string | null;
   verifiedAt: string | null;
@@ -28,6 +29,7 @@ export type MailDomainRow = {
   dns_status: Exclude<DomainStatus, "disabled">;
   catch_all_policy: CatchAllPolicy;
   catch_all_mailbox_id: string | null;
+  can_remove: number;
   is_enabled: number;
   last_error_code: string | null;
   verified_at: string | null;

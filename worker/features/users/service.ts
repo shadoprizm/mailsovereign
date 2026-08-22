@@ -122,5 +122,5 @@ export function generateTemporaryPassword(): string {
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/g, "");
-  return `Hq!${random}`;
+  return `Sm!${random}`;
 }

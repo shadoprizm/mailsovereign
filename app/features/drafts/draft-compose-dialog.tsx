@@ -10,6 +10,7 @@ import { getMessage } from "@/features/messages/api";
 import type { MessageDetail } from "@/features/messages/types";
 
 import { deleteDraft } from "./api";
+import { DiscardDraftDialog } from "./discard-draft-dialog";
 import type { Draft } from "./types";
 
 type DraftComposeDialogProps = {
@@ -35,7 +36,7 @@ export function DraftComposeDialog({
   const contextMessageId = draft.replyToMessageId ?? draft.forwardOfMessageId;
   const [message, setMessage] = React.useState<MessageDetail | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  const [isDiscarding, setIsDiscarding] = React.useState(false);
+  const [discardOpen, setDiscardOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (!contextMessageId) {
@@ -63,53 +64,55 @@ export function DraftComposeDialog({
 
   if (contextMessageId && !message) {
     return (
-      <ComposeWindow
-        open
-        status={error ? "Draft unavailable" : "Loading draft"}
-        title={mode === "reply" ? "Reply" : "Forward"}
-        onOpenChange={onOpenChange}
-      >
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
-          {error ? (
-            <>
-              <div className="space-y-1">
-                <h2 className="text-sm font-medium">Draft context is unavailable</h2>
-                <p className="max-w-sm text-xs text-muted-foreground">{error}</p>
-              </div>
-              <Button size="sm" type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Back to drafts
-              </Button>
-              <Button
-                disabled={isDiscarding}
-                size="sm"
-                type="button"
-                variant="destructive"
-                onClick={() => {
-                  setIsDiscarding(true);
-                  void deleteDraft(draft.id)
-                    .then(() => {
-                      onOpenChange(false);
-                      onDraftsChange();
-                    })
-                    .catch((reason: unknown) => {
-                      setError(
-                        reason instanceof Error ? reason.message : "Draft could not be discarded."
-                      );
-                      setIsDiscarding(false);
-                    });
-                }}
-              >
-                {isDiscarding ? "Discarding…" : "Discard draft"}
-              </Button>
-            </>
-          ) : (
-            <>
-              <Spinner />
-              <span className="text-xs text-muted-foreground">Loading draft…</span>
-            </>
-          )}
-        </div>
-      </ComposeWindow>
+      <>
+        <ComposeWindow
+          open
+          status={error ? "Draft unavailable" : "Loading draft"}
+          title={mode === "reply" ? "Reply" : "Forward"}
+          onOpenChange={onOpenChange}
+        >
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
+            {error ? (
+              <>
+                <div className="space-y-1">
+                  <h2 className="text-sm font-medium">Draft context is unavailable</h2>
+                  <p className="max-w-sm text-xs text-muted-foreground">{error}</p>
+                </div>
+                <Button
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                  onClick={() => onOpenChange(false)}
+                >
+                  Back to drafts
+                </Button>
+                <Button
+                  size="sm"
+                  type="button"
+                  variant="destructive"
+                  onClick={() => setDiscardOpen(true)}
+                >
+                  Discard draft
+                </Button>
+              </>
+            ) : (
+              <>
+                <Spinner />
+                <span className="text-xs text-muted-foreground">Loading draft…</span>
+              </>
+            )}
+          </div>
+        </ComposeWindow>
+        <DiscardDraftDialog
+          open={discardOpen}
+          onConfirm={async () => {
+            await deleteDraft(draft.id);
+            onOpenChange(false);
+            onDraftsChange();
+          }}
+          onOpenChange={setDiscardOpen}
+        />
+      </>
     );
   }
 

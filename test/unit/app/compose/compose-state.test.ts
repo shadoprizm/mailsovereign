@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   defaultSendingIdentity,
+  draftRecoveryKey,
   findDraftForComposer,
   forwardedMessage,
   normalizeDraftHtml,
   readDraftRecovery,
+  recipientInputsAreValid,
   replySendingIdentity,
   sendingIdentities,
   serializeDraft,
@@ -21,6 +23,13 @@ describe("composer state", () => {
       "two@example.com",
       "three@example.com"
     ]);
+  });
+
+  it("distinguishes complete recipient lists from addresses still being typed", () => {
+    expect(
+      recipientInputsAreValid("one@example.com, two@example.com", "copy@example.net", "")
+    ).toBe(true);
+    expect(recipientInputsAreValid("one@example.com, unfinished", "", "")).toBe(false);
   });
 
   it("exposes every send-enabled identity on an authorized mailbox", () => {
@@ -111,6 +120,8 @@ describe("composer state", () => {
       mailboxId: "mbx_1",
       replyToMessageId: null,
       forwardOfMessageId: null,
+      signatureMode: "none",
+      signatureId: null,
       from: "support@example.com",
       to: [],
       cc: [],
@@ -124,8 +135,14 @@ describe("composer state", () => {
     });
     const drafts = [draft("draft-one"), draft("draft-two")];
 
-    expect(findDraftForComposer(drafts, "draft-two", null, null)?.id).toBe("draft-two");
-    expect(findDraftForComposer(drafts, "missing", null, null)).toBeNull();
+    expect(findDraftForComposer(drafts, "draft-two")?.id).toBe("draft-two");
+    expect(findDraftForComposer(drafts, "missing")).toBeNull();
+    expect(findDraftForComposer(drafts, null)).toBeNull();
+  });
+
+  it("keeps crash recovery scoped to the exact saved draft", () => {
+    expect(draftRecoveryKey("draft-one")).toBe("sovereign-mail:compose:draft:draft-one");
+    expect(draftRecoveryKey("draft-two")).toBe("sovereign-mail:compose:draft:draft-two");
   });
 
   it("uses the exact address that received the message as the reply identity", () => {

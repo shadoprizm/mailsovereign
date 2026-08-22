@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 
 import { createAuth } from "../auth/auth";
+import { aiRoutes } from "../features/ai/routes";
 import { auditRoutes } from "../features/audit/routes";
+import { billingRoutes } from "../features/billing/routes";
+import { contactRoutes } from "../features/contacts/routes";
 import { domainRoutes } from "../features/domains/routes";
 import { draftRoutes } from "../features/drafts/routes";
 import { mailboxAccessRoutes } from "../features/mailbox-access/routes";
@@ -14,6 +17,7 @@ import { providerConnectionRoutes } from "../features/provider-connections/route
 import { sendRoutes } from "../features/send/routes";
 import { sessionControlRoutes } from "../features/sessions/routes";
 import { setupRoutes } from "../features/setup/routes";
+import { signatureRoutes } from "../features/signatures/routes";
 import { updateRoutes } from "../features/updates/routes";
 import { userRoutes } from "../features/users/routes";
 import type { HonoApp } from "../lib/env";
@@ -50,6 +54,9 @@ apiRoutes.route("/api/health", healthRoutes);
 apiRoutes.route("/api/setup", setupRoutes);
 apiRoutes.route("/api/me", meRoutes);
 apiRoutes.route("/api/audit", auditRoutes);
+apiRoutes.route("/api/ai", aiRoutes);
+apiRoutes.route("/api/billing", billingRoutes);
+apiRoutes.route("/api/contacts", contactRoutes);
 apiRoutes.route("/api/domains", domainRoutes);
 apiRoutes.route("/api/drafts", draftRoutes);
 apiRoutes.route("/api/mailbox-grants", mailboxAccessRoutes);
@@ -60,6 +67,7 @@ apiRoutes.route("/api/mailboxes", mailboxRoutes);
 apiRoutes.route("/api/conversations", conversationRoutes);
 apiRoutes.route("/api/messages", messageRoutes);
 apiRoutes.route("/api/notifications", notificationRoutes);
+apiRoutes.route("/api/signatures", signatureRoutes);
 apiRoutes.route("/api/attachments", attachmentRoutes);
 apiRoutes.route("/api/users", userRoutes);
 apiRoutes.route("/api/updates", updateRoutes);

@@ -3,13 +3,13 @@ import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const requireAuthContext = vi.fn();
-const requireRecentSession = vi.fn();
+const requireRecentSessionForEnvironment = vi.fn();
 const requireRole = vi.fn();
 const recordAudit = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@worker/auth/session", () => ({
   requireAuthContext,
-  requireRecentSession,
+  requireRecentSessionForEnvironment,
   requireRole
 }));
 vi.mock("@worker/features/audit/service", () => ({ recordAudit }));
@@ -44,9 +44,13 @@ function environment(options: { connectionRow?: boolean } = {}) {
           provider_id: "mxroute-primary",
           kind: "imap-smtp",
           display_name: "MXRoute primary",
+          mailbox_address: "ops@example.com",
           config_json: JSON.stringify(config),
           credential_key_version: 1,
           is_enabled: 1,
+          verified_at: timestamp,
+          last_synced_at: null,
+          last_error_code: null,
           created_at: timestamp,
           updated_at: timestamp
         }
@@ -59,7 +63,7 @@ function environment(options: { connectionRow?: boolean } = {}) {
   return {
     env: {
       DB: { prepare } as unknown as D1Database,
-      HQBASE_JOBS: { send } as unknown as Queue,
+      SOVEREIGN_MAIL_JOBS: { send } as unknown as Queue,
       PROVIDER_CREDENTIAL_KEY: secret
     },
     bind,
@@ -105,7 +109,10 @@ describe("provider connection operator routes", () => {
     expect(JSON.stringify(body)).not.toContain("hunter2-secret");
     expect(JSON.stringify(body)).not.toContain("v1:");
     expect(requireRole).toHaveBeenCalledWith(expect.anything(), ["owner", "admin"]);
-    expect(requireRecentSession).toHaveBeenCalledOnce();
+    expect(requireRecentSessionForEnvironment).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything()
+    );
     expect(JSON.stringify(bind.mock.calls)).not.toContain("hunter2-secret");
     expect(recordAudit).toHaveBeenCalledWith(
       expect.anything(),
@@ -158,9 +165,31 @@ describe("provider connection operator routes", () => {
     expect(JSON.stringify(send.mock.calls)).not.toContain("hunter2-secret");
   });
 
+  it("removes a saved credential only after recent authentication", async () => {
+    const { env, prepare } = environment({ connectionRow: true });
+    const response = await app.request(
+      "https://app.example.com/mxroute-primary",
+      { method: "DELETE" },
+      env as never
+    );
+
+    expect(response.status).toBe(204);
+    expect(prepare).toHaveBeenCalledWith(
+      "DELETE FROM provider_connections WHERE provider_id = ? AND kind = 'imap-smtp'"
+    );
+    expect(requireRecentSessionForEnvironment).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything()
+    );
+    expect(recordAudit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ action: "provider_connection.delete", outcome: "success" })
+    );
+  });
+
   it("stops before writing when recent authentication is rejected", async () => {
     const { env, prepare } = environment();
-    requireRecentSession.mockImplementationOnce(() => {
+    requireRecentSessionForEnvironment.mockImplementationOnce(() => {
       throw new AppError("RECENT_AUTH_REQUIRED", "Sign in again.", 403);
     });
     const response = await app.request(

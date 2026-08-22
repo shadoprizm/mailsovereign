@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-const stagingUrl = process.env.HQBASE_STAGING_URL ?? "";
-const oauthClientId = process.env.HQBASE_STAGING_OAUTH_CLIENT_ID ?? "";
+const stagingUrl = process.env.SOVEREIGN_MAIL_STAGING_URL ?? "";
+const oauthClientId = process.env.SOVEREIGN_MAIL_STAGING_OAUTH_CLIENT_ID ?? "";
 
 test("deployed Sovereign Mail PWA shell is ready", async ({ page, request }) => {
   await expect
