@@ -62,6 +62,7 @@ const connectedDomain: MailDomain = {
   dnsStatus: "pending",
   catchAllPolicy: "reject",
   catchAllMailboxId: null,
+  canRemove: true,
   isEnabled: true,
   updatedAt: "2026-07-20T00:00:00.000Z"
 };
@@ -226,7 +227,7 @@ describe("settings presentation", () => {
       <DomainSettings portalHostname="mail.example.com" onChanged={() => undefined} />
     );
 
-    expect(html).toContain("Connect domain");
+    expect(html).toContain("Add direct-delivery domain");
     expect(html).not.toContain('type="password"');
     expect(html).not.toContain("API token");
     expect(html).toContain('class="relative w-full overflow-auto rounded-lg border"');
@@ -238,7 +239,12 @@ describe("settings presentation", () => {
 
   it("renders connected domains in the compact settings table", () => {
     const html = renderToStaticMarkup(
-      <DomainTable domains={[connectedDomain]} pendingDomainId={null} onToggle={() => undefined} />
+      <DomainTable
+        domains={[connectedDomain]}
+        pendingDomainId={null}
+        onRemove={() => undefined}
+        onToggle={() => undefined}
+      />
     );
 
     expect(html).toContain(">Domain<");
@@ -251,13 +257,15 @@ describe("settings presentation", () => {
     expect(html).toContain("Degraded");
     expect(html).toContain("Pending");
     expect(html).toContain('aria-label="Disable example.com"');
+    expect(html).toContain('aria-label="Remove example.com"');
   });
 
-  it("replaces General and Upgrade with Debug as the final tab", () => {
+  it("keeps Sovereign Mail updates and Debug as the final tab", () => {
     const html = renderToStaticMarkup(
       <SettingsPage
         activeTab="mailboxes"
         canManage
+        isOwner
         defaultFromMailboxId={null}
         mailboxes={[]}
         notifications={notifications}
@@ -275,12 +283,22 @@ describe("settings presentation", () => {
 
     expect(html).not.toContain(">General<");
     expect(html).not.toContain(">Upgrade<");
+    expect(html).toContain(">Updates<");
+    expect(html).not.toContain(">Service<");
+    expect(html).not.toContain("Managed service");
     expect(html).not.toContain('value="access"');
     expect(html).toContain(">Debug<");
+    expect(html).toContain(">Connections<");
     expect(html).toContain(">Notifications<");
+    expect(html).toContain(">AI<");
     expect(html).toContain('href="/settings/mailboxes"');
+    expect(html).toContain('href="/settings/signatures"');
+    expect(html).toContain('href="/settings/connections"');
     expect(html).toContain('href="/settings/notifications"');
+    expect(html).toContain('href="/settings/updates"');
+    expect(html).toContain('href="/settings/ai"');
     expect(html).toContain('href="/settings/debug"');
+    expect(html.indexOf(">Debug<")).toBeGreaterThan(html.indexOf(">Notifications<"));
     expect(html.indexOf(">Debug<")).toBeGreaterThan(html.indexOf(">Updates<"));
   });
 });

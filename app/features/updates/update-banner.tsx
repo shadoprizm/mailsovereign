@@ -35,7 +35,7 @@ export function UpdateBanner({
         )}
         <span>
           <strong>{inProgress ? "Update in progress" : "Update available"}</strong>
-          {targetVersion ? ` · HQBase ${targetVersion}` : null}
+          {targetVersion ? ` · Sovereign Mail ${targetVersion}` : null}
         </span>
       </div>
       <Button className="h-7 px-3 text-xs" onClick={onOpen} type="button" variant="outline">

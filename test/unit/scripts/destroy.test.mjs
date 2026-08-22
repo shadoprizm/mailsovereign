@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { destroyPlan, destroyTargets } from "../../../scripts/hqbase/destroy.mjs";
+import { destroyPlan, destroyTargets } from "../../../scripts/sovereign-mail/destroy.mjs";
 
 const scopes = ["worker", "data", "storage", "state", "domain", "all"];
 
@@ -8,10 +8,10 @@ function manifest({ reused = false } = {}) {
   return {
     version: 1,
     name: "qa",
-    worker: { name: "hqbase-qa" },
-    d1: { name: "hqbase-data", reused },
-    r2: { bucket: "hqbase-mail", reused },
-    queue: { name: "hqbase-jobs", deadLetterName: "hqbase-jobs-dlq" },
+    worker: { name: "sovereign-mail-qa" },
+    d1: { name: "sovereign-mail-data", reused },
+    r2: { bucket: "sovereign-mail-mail", reused },
+    queue: { name: "sovereign-mail-jobs", deadLetterName: "sovereign-mail-jobs-dlq" },
     email: null
   };
 }

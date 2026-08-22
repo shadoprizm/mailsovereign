@@ -53,7 +53,7 @@
 @layer base {
   :root {
     color-scheme: light;
-    --background: 0 0% 100%;
+    --background: 60 14% 96%;
     --foreground: 0 0% 9%;
     --card: 0 0% 99%;
     --card-foreground: 0 0% 9%;

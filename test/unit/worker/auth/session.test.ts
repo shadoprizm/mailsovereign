@@ -1,4 +1,10 @@
-import { type AuthContext, isRecentSession, requireRecentSession } from "@worker/auth/session";
+import {
+  type AuthContext,
+  isRecentSession,
+  isRecentSessionForEnvironment,
+  recentSessionMaxAgeMs,
+  requireRecentSession
+} from "@worker/auth/session";
 import { describe, expect, it } from "vitest";
 
 const now = new Date("2026-07-28T12:00:00.000Z");
@@ -33,5 +39,25 @@ describe("recent authentication", () => {
     expect(() => requireRecentSession(authContext(new Date(0)), 10 * 60 * 1000)).toThrow(
       "Sign in again before changing workspace infrastructure."
     );
+  });
+
+  it("accepts a deployment-configured window up to 24 hours", () => {
+    const auth = authContext(new Date(now.getTime() - 23 * 60 * 60 * 1000));
+
+    expect(
+      isRecentSessionForEnvironment(auth, { RECENT_AUTH_MAX_AGE_SECONDS: "86400" }, now.getTime())
+    ).toBe(true);
+  });
+
+  it.each([
+    undefined,
+    "",
+    "299",
+    "86401",
+    "600.5",
+    "not-a-number"
+  ])("falls back to ten minutes for invalid deployment value %s", (configured) => {
+    const env = configured === undefined ? {} : { RECENT_AUTH_MAX_AGE_SECONDS: configured };
+    expect(recentSessionMaxAgeMs(env)).toBe(10 * 60 * 1000);
   });
 });

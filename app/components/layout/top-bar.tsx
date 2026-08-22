@@ -91,32 +91,34 @@ export function TopBar({
         <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
         <Input
           className="h-8 border-transparent bg-muted/70 pl-8 shadow-none focus-visible:border-input focus-visible:ring-1"
-          placeholder="Search mail"
+          placeholder={activeFolder === "contacts" ? "Search contacts" : "Search mail"}
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
         />
       </div>
       <div className="ml-auto flex shrink-0 items-center gap-2">
-        <Select value={mailboxId} onValueChange={onMailboxChange}>
-          <SelectTrigger
-            aria-label="Mailbox filter"
-            className="hidden h-8 w-52 border-transparent bg-muted/70 shadow-none lg:flex"
-          >
-            <SelectValue placeholder="All mailboxes" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value="all">
-                {mailboxUnreadLabel("All mailboxes", "all", unread)}
-              </SelectItem>
-              {mailboxes.map((mailbox) => (
-                <SelectItem key={mailbox.id} value={mailbox.id}>
-                  {mailboxUnreadLabel(mailbox.address, mailbox.id, unread)}
+        {activeFolder !== "contacts" ? (
+          <Select value={mailboxId} onValueChange={onMailboxChange}>
+            <SelectTrigger
+              aria-label="Mailbox filter"
+              className="hidden h-8 w-52 border-transparent bg-muted/70 shadow-none lg:flex"
+            >
+              <SelectValue placeholder="All mailboxes" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="all">
+                  {mailboxUnreadLabel("All mailboxes", "all", unread)}
                 </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
+                {mailboxes.map((mailbox) => (
+                  <SelectItem key={mailbox.id} value={mailbox.id}>
+                    {mailboxUnreadLabel(mailbox.address, mailbox.id, unread)}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        ) : null}
         <Button aria-label="New email" className="h-8 px-3" onClick={onCompose} type="button">
           <MailPlus />
           <span className="hidden sm:inline">Compose</span>

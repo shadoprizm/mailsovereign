@@ -36,7 +36,7 @@ describe("setup UI", () => {
 
   it("uses an installation timeline until Cloudflare access is ready", () => {
     const html = renderToStaticMarkup(
-      <SetupFrame description="Complete installation." title="Set up HQBase">
+      <SetupFrame description="Complete installation." title="Set up Sovereign Mail">
         <WizardLayout activePhase={2} activeStep={0} steps={[]}>
           <AccessStep error={null} isLoading onNext={() => undefined} />
         </WizardLayout>
@@ -44,7 +44,7 @@ describe("setup UI", () => {
     );
 
     expect(html).toContain('aria-label="Installation steps"');
-    expect(html).toContain("Deploy HQBase resources");
+    expect(html).toContain("Deploy Sovereign Mail resources");
     expect(html).toContain("Worker and customer-owned storage");
     expect(html).toContain("Complete");
     expect(html).toContain("Authorize and install");
@@ -75,7 +75,7 @@ describe("setup UI", () => {
     expect(html).toContain('aria-label="Domain: complete"');
     expect(html).toContain('aria-label="Mailboxes: active"');
     expect(html).not.toContain("<header");
-    expect(html).not.toContain(">HQBase</span>");
+    expect(html).not.toContain(">Sovereign Mail</span>");
     expect(html).toContain("Configure workspace");
     expect(html).toContain("Domain");
     expect(html).toContain("Owner account");
@@ -103,7 +103,7 @@ describe("setup UI", () => {
     );
 
     expect(html).toContain("Login email");
-    expect(html).toContain("always access, even when HQBase is unavailable");
+    expect(html).toContain("always access, even when Sovereign Mail is unavailable");
     expect(html).toContain("cannot use a domain connected to this workspace");
     expect(html).not.toContain("external");
   });

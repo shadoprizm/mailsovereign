@@ -15,10 +15,12 @@ import type { MailDomain } from "./types";
 export function DomainTable({
   domains,
   pendingDomainId,
+  onRemove,
   onToggle
 }: {
   domains: MailDomain[];
   pendingDomainId: string | null;
+  onRemove: (domain: MailDomain) => void;
   onToggle: (domain: MailDomain) => void;
 }): React.ReactElement {
   return (
@@ -67,20 +69,37 @@ export function DomainTable({
               </Badge>
             </TableCell>
             <TableCell className="text-right">
-              <Button
-                aria-label={`${domain.isEnabled ? "Disable" : "Enable"} ${domain.name}`}
-                disabled={pendingDomainId === domain.id}
-                size="sm"
-                type="button"
-                variant="outline"
-                onClick={() => onToggle(domain)}
-              >
-                {pendingDomainId === domain.id
-                  ? "Updating…"
-                  : domain.isEnabled
-                    ? "Disable"
-                    : "Enable"}
-              </Button>
+              <div className="flex justify-end gap-2">
+                <Button
+                  aria-label={`${domain.isEnabled ? "Disable" : "Enable"} ${domain.name}`}
+                  disabled={pendingDomainId === domain.id}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                  onClick={() => onToggle(domain)}
+                >
+                  {pendingDomainId === domain.id
+                    ? "Updating…"
+                    : domain.isEnabled
+                      ? "Disable"
+                      : "Enable"}
+                </Button>
+                <Button
+                  aria-label={`Remove ${domain.name}`}
+                  disabled={pendingDomainId === domain.id || !domain.canRemove}
+                  size="sm"
+                  title={
+                    domain.canRemove
+                      ? `Remove ${domain.name} from Sovereign Mail`
+                      : "Remove every mailbox address first. Domains with preserved migration history cannot be removed."
+                  }
+                  type="button"
+                  variant="ghost"
+                  onClick={() => onRemove(domain)}
+                >
+                  Remove
+                </Button>
+              </div>
             </TableCell>
           </TableRow>
         ))}

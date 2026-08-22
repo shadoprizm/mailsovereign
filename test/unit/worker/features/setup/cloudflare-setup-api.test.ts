@@ -1,6 +1,9 @@
 import {
   attachWorkerCustomDomain,
   configureCloudflareDomain,
+  createCloudflareZone,
+  getCloudflareZone,
+  listCloudflareAccounts,
   listCloudflareZones,
   verifyCloudflareToken
 } from "@worker/features/setup/cloudflare";
@@ -29,18 +32,20 @@ describe("Cloudflare setup API", () => {
 
     await expect(listCloudflareZones({ apiToken: "token-123" })).resolves.toEqual([
       {
-        accountName: "HQBase",
+        accountName: "Sovereign Mail",
         accountId: "account-1",
         id: "zone-a",
         name: "alpha.com",
+        nameServers: [],
         status: "active",
         type: "full"
       },
       {
-        accountName: "HQBase",
+        accountName: "Sovereign Mail",
         accountId: "account-1",
         id: "zone-b",
         name: "zeta.com",
+        nameServers: [],
         status: "active",
         type: "full"
       }
@@ -49,6 +54,163 @@ describe("Cloudflare setup API", () => {
     const firstCall = fetchMock.mock.calls[0];
     expect(firstCall?.[0]).toBe(`${API_BASE}/zones?page=1&per_page=100`);
     expect(firstCall?.[1]?.headers).toMatchObject({ authorization: "Bearer token-123" });
+  });
+
+  it("lists Cloudflare accounts available to the temporary grant", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        jsonResponse({
+          result: [
+            { id: "account-2", name: "Zeta" },
+            { id: "account-1", name: "Alpha" }
+          ],
+          result_info: { page: 1, total_pages: 1 }
+        })
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(listCloudflareAccounts({ apiToken: "token-123" })).resolves.toEqual([
+      { id: "account-1", name: "Alpha" },
+      { id: "account-2", name: "Zeta" }
+    ]);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`${API_BASE}/accounts?page=1&per_page=50`);
+  });
+
+  it("creates a full Cloudflare zone and returns its assigned nameservers", async () => {
+    const fetchMock = vi.fn<typeof fetch>((input, init) => {
+      const url = fetchInputUrl(input);
+      if (url === `${API_BASE}/zones/zone-new/dns_records/scan`) {
+        return Promise.resolve(
+          jsonResponse({ result: { recs_added: 4, total_records_parsed: 4 } })
+        );
+      }
+      if (init?.method === "POST") {
+        return Promise.resolve(
+          jsonResponse({
+            result: {
+              ...zone({ id: "zone-new", name: "example.net" }),
+              name_servers: ["ada.ns.cloudflare.com", "bob.ns.cloudflare.com"],
+              status: "pending"
+            }
+          })
+        );
+      }
+      return Promise.resolve(jsonResponse({ result: [] }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      createCloudflareZone({
+        accountId: "account-1",
+        apiToken: "token-123",
+        name: "example.net"
+      })
+    ).resolves.toMatchObject({
+      id: "zone-new",
+      name: "example.net",
+      nameServers: ["ada.ns.cloudflare.com", "bob.ns.cloudflare.com"],
+      status: "pending"
+    });
+
+    const createCall = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
+    expect(createCall?.[0]).toBe(`${API_BASE}/zones`);
+    expect(createCall?.[1]?.body).toBe(
+      JSON.stringify({ account: { id: "account-1" }, name: "example.net", type: "full" })
+    );
+    const scanCall = fetchMock.mock.calls.find(
+      ([input]) => fetchInputUrl(input) === `${API_BASE}/zones/zone-new/dns_records/scan`
+    );
+    expect(scanCall?.[1]?.body).toBe(JSON.stringify({}));
+  });
+
+  it("returns the exact existing account zone without creating a duplicate", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        jsonResponse({
+          result: [
+            {
+              ...zone({ id: "zone-existing", name: "example.net" }),
+              name_servers: ["ada.ns.cloudflare.com", "bob.ns.cloudflare.com"]
+            }
+          ]
+        })
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      createCloudflareZone({
+        accountId: "account-1",
+        apiToken: "token-123",
+        name: "example.net"
+      })
+    ).resolves.toMatchObject({ id: "zone-existing", name: "example.net" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBeUndefined();
+  });
+
+  it("retries the DNS quick scan for an existing pending zone", async () => {
+    const fetchMock = vi.fn<typeof fetch>((input) => {
+      const url = fetchInputUrl(input);
+      if (url.endsWith("/dns_records/scan")) {
+        return Promise.resolve(
+          jsonResponse({ result: { recs_added: 3, total_records_parsed: 3 } })
+        );
+      }
+      return Promise.resolve(
+        jsonResponse({
+          result: [
+            {
+              ...zone({ id: "zone-pending", name: "example.net" }),
+              name_servers: ["ada.ns.cloudflare.com", "bob.ns.cloudflare.com"],
+              status: "pending"
+            }
+          ]
+        })
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      createCloudflareZone({
+        accountId: "account-1",
+        apiToken: "token-123",
+        name: "example.net"
+      })
+    ).resolves.toMatchObject({ id: "zone-pending", status: "pending" });
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) => fetchInputUrl(input) === `${API_BASE}/zones` && init?.method === "POST"
+      )
+    ).toBe(false);
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          fetchInputUrl(input) === `${API_BASE}/zones/zone-pending/dns_records/scan` &&
+          init?.method === "POST"
+      )
+    ).toBe(true);
+  });
+
+  it("refreshes ordinary zone status without invoking activation check", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        jsonResponse({
+          result: {
+            ...zone({ id: "zone-1", name: "example.net" }),
+            name_servers: ["ada.ns.cloudflare.com", "bob.ns.cloudflare.com"],
+            status: "pending"
+          }
+        })
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      getCloudflareZone({ apiToken: "token-123", zoneId: "zone-1" })
+    ).resolves.toMatchObject({ id: "zone-1", status: "pending" });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`${API_BASE}/zones/zone-1`);
   });
 
   it("verifies a Cloudflare API token", async () => {
@@ -176,7 +338,7 @@ describe("Cloudflare setup API", () => {
     const result = await configureCloudflareDomain({
       apiToken: "token-123",
       enableSending: true,
-      workerName: "hqbase",
+      workerName: "sovereign-mail",
       zoneId: "zone-1"
     });
 
@@ -192,10 +354,10 @@ describe("Cloudflare setup API", () => {
     ]);
     expect(catchAllCall?.[1]?.body).toBe(
       JSON.stringify({
-        actions: [{ type: "worker", value: ["hqbase"] }],
+        actions: [{ type: "worker", value: ["sovereign-mail"] }],
         enabled: true,
         matchers: [{ type: "all" }],
-        name: "HQBase catch-all"
+        name: "Sovereign Mail catch-all"
       })
     );
     expect(catchAllCall?.[1]?.method).toBe("PUT");
@@ -217,7 +379,7 @@ describe("Cloudflare setup API", () => {
     const result = await configureCloudflareDomain({
       apiToken: "token-123",
       enableSending: true,
-      workerName: "hqbase",
+      workerName: "sovereign-mail",
       zoneId: "zone-1"
     });
 
@@ -230,6 +392,31 @@ describe("Cloudflare setup API", () => {
         ([input, init]) =>
           fetchInputUrl(input) === `${API_BASE}/zones/zone-1/email/sending/subdomains` &&
           init?.method === "POST"
+      )
+    ).toBe(false);
+  });
+
+  it("completes receive-first readiness without calling paid Email Sending APIs", async () => {
+    const fetchMock = vi.fn<typeof fetch>((input, init) =>
+      Promise.resolve(cloudflareSetupResponse(fetchInputUrl(input), init?.method ?? "GET"))
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await configureCloudflareDomain({
+      apiToken: "token-123",
+      enableSending: false,
+      workerName: "sovereign-mail",
+      zoneId: "zone-1"
+    });
+
+    expect(result.status.ready).toBe(true);
+    expect(result.steps.find((step) => step.id === "sending")).toMatchObject({
+      message: "Skipped by setup option.",
+      status: "skipped"
+    });
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        fetchInputUrl(input).includes("/email/sending/subdomains")
       )
     ).toBe(false);
   });
@@ -267,7 +454,7 @@ describe("Cloudflare setup API", () => {
     const result = await configureCloudflareDomain({
       apiToken: "token-123",
       enableSending: true,
-      workerName: "hqbase",
+      workerName: "sovereign-mail",
       zoneId: "zone-1"
     });
 
@@ -305,18 +492,18 @@ describe("Cloudflare setup API", () => {
     const result = await configureCloudflareDomain({
       apiToken: "token-123",
       enableSending: true,
-      workerName: "hqbase",
+      workerName: "sovereign-mail",
       zoneId: "zone-1"
     });
 
     const routingStep = result.steps.find((step) => step.id === "routing");
     expect(routingStep).toMatchObject({
       message:
-        "Cloudflare rejected the Email Routing DNS/settings request. Authorize HQBase with Zone Settings Edit, then retry the domain connection.",
+        "Cloudflare rejected the Email Routing DNS/settings request. Authorize Sovereign Mail with Zone Settings Edit, then retry the domain connection.",
       status: "failed"
     });
     expect(result.status.routing.error).toBe(
-      "Cloudflare rejected the Email Routing DNS/settings request. Authorize HQBase with Zone Settings Edit, then retry the domain connection."
+      "Cloudflare rejected the Email Routing DNS/settings request. Authorize Sovereign Mail with Zone Settings Edit, then retry the domain connection."
     );
   });
 
@@ -328,10 +515,10 @@ describe("Cloudflare setup API", () => {
 
     const result = await configureCloudflareDomain({
       apiToken: "token-123",
-      appHostname: "hqbase.example.com",
+      appHostname: "sovereign-mail.example.com",
       attachCustomDomain: true,
       enableSending: true,
-      workerName: "hqbase",
+      workerName: "sovereign-mail",
       zoneId: "zone-1"
     });
 
@@ -342,12 +529,39 @@ describe("Cloudflare setup API", () => {
     expect(result.steps[0]?.status).toBe("success");
     expect(attachCall?.[1]?.body).toBe(
       JSON.stringify({
-        hostname: "hqbase.example.com",
-        service: "hqbase",
+        hostname: "sovereign-mail.example.com",
+        service: "sovereign-mail",
         zone_id: "zone-1",
         zone_name: "example.com"
       })
     );
+  });
+
+  it("does not request Workers API access when the canonical app domain is already live", async () => {
+    const fetchMock = vi.fn<typeof fetch>((input, init) =>
+      Promise.resolve(cloudflareSetupResponse(fetchInputUrl(input), init?.method ?? "GET"))
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await configureCloudflareDomain({
+      apiToken: "token-123",
+      appHostname: "app.example.com",
+      attachCustomDomain: true,
+      canonicalHostname: "APP.EXAMPLE.COM.",
+      enableSending: true,
+      workerName: "sovereign-mail",
+      zoneId: "zone-1"
+    });
+
+    expect(result.steps[0]).toMatchObject({
+      message: "app.example.com is already serving this Sovereign Mail deployment.",
+      status: "success"
+    });
+    expect(
+      fetchMock.mock.calls.some(
+        ([input]) => fetchInputUrl(input) === `${API_BASE}/accounts/account-1/workers/domains`
+      )
+    ).toBe(false);
   });
 
   it("does not take over a portal from an unrelated Worker", async () => {
@@ -358,7 +572,7 @@ describe("Cloudflare setup API", () => {
           jsonResponse({
             result: [
               {
-                hostname: "hqbase.example.com",
+                hostname: "sovereign-mail.example.com",
                 id: "domain-1",
                 service: "other-worker",
                 zone_id: "zone-1",
@@ -373,13 +587,14 @@ describe("Cloudflare setup API", () => {
     await expect(
       attachWorkerCustomDomain({
         apiToken: "token-123",
-        hostname: "hqbase.example.com",
-        workerName: "hqbase",
+        hostname: "sovereign-mail.example.com",
+        workerName: "sovereign-mail",
         zone: {
           accountId: "account-1",
-          accountName: "HQBase",
+          accountName: "Sovereign Mail",
           id: "zone-1",
           name: "example.com",
+          nameServers: [],
           status: "active",
           type: "full"
         }
@@ -395,9 +610,9 @@ function cloudflareSetupResponse(url: string, method: string) {
   if (url === `${API_BASE}/accounts/account-1/workers/domains` && method === "PUT") {
     return jsonResponse({
       result: {
-        hostname: "hqbase.example.com",
+        hostname: "sovereign-mail.example.com",
         id: "domain-1",
-        service: "hqbase",
+        service: "sovereign-mail",
         zone_id: "zone-1",
         zone_name: "example.com"
       }
@@ -424,7 +639,7 @@ function cloudflareSetupResponse(url: string, method: string) {
   if (url === `${API_BASE}/zones/zone-1/email/routing/rules/catch_all`) {
     return jsonResponse({
       result: {
-        actions: [{ type: "worker", value: ["hqbase"] }],
+        actions: [{ type: "worker", value: ["sovereign-mail"] }],
         enabled: true
       }
     });
@@ -444,7 +659,7 @@ function fetchInputUrl(input: Parameters<typeof fetch>[0]): string {
 
 function zone({ id, name }: { id: string; name: string }) {
   return {
-    account: { id: "account-1", name: "HQBase" },
+    account: { id: "account-1", name: "Sovereign Mail" },
     id,
     name,
     status: "active",

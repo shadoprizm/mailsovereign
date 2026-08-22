@@ -36,7 +36,7 @@ export function LoginPage({ onLogin }: LoginPageProps): React.ReactElement {
       <div className="w-full max-w-sm">
         <div className="mb-10 flex items-center justify-center gap-2">
           <img alt="" className="h-7 w-auto" src="/logo.svg" />
-          <span className="text-sm font-medium">HQBase</span>
+          <span className="text-sm font-medium">Sovereign Mail</span>
         </div>
         <Card className="bg-card/70 shadow-none">
           <CardHeader className="space-y-1 pb-5">

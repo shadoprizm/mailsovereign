@@ -4,7 +4,7 @@ import type { UpdateStatus } from "@/features/updates/types";
 import { UpdateSettings } from "@/features/updates/update-settings";
 
 const availableStatus: UpdateStatus = {
-  product: "hqbase",
+  product: "sovereign-mail",
   installedVersion: "0.1.2",
   installedSchemaVersion: 2,
   channel: "stable",
@@ -39,7 +39,7 @@ describe("update settings", () => {
     expect(html).toContain("0.1.2");
     expect(html).toContain("Available");
     expect(html).toContain("0.2.0");
-    expect(html).not.toContain("HQBase 0.2.0");
+    expect(html).not.toContain("Sovereign Mail 0.2.0");
     expect(html).not.toContain("Read release notes");
     expect(html).not.toContain("Schema 10");
   });
@@ -62,7 +62,7 @@ describe("update settings", () => {
     );
     expect(html).toContain("Update in progress");
     expect(html).toContain("animate-spin");
-    expect(html).toContain("HQBase 0.2.0 is being deployed");
+    expect(html).toContain("Sovereign Mail 0.2.0 is being deployed");
     expect(html).toContain("build-123");
     expect(html).not.toContain("Install update");
   });

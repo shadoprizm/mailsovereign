@@ -9,8 +9,12 @@ allowBuilds:
 overrides:
   '@better-auth/core': 1.7.0-rc.2
   '@hono/node-server': 2.0.12
-  fast-uri: 3.1.4
-  postcss: 8.5.23
+  fast-uri: 3.1.5
+  postcss: 8.5.26
 
 minimumReleaseAgeExclude:
   - '@cloudflare/workers-types@5.20260711.1'
+
+patchedDependencies:
+  cf-imap@1.0.0: patches/cf-imap@1.0.0.patch
+  worker-mailer@1.2.1: patches/worker-mailer@1.2.1.patch

@@ -89,7 +89,7 @@ async function authenticateMcp(
   const authorization = request.headers.get("authorization");
   if (!authorization?.startsWith("Bearer ")) throw new Error("Missing bearer token.");
   const bearer = authorization.slice("Bearer ".length).trim();
-  const prefix = "hqb_access_";
+  const prefix = "sovereign_mail_access_";
   if (!bearer.startsWith(prefix)) throw new Error("Invalid bearer token.");
   const token = bearer.slice(prefix.length);
   if (!token) throw new Error("Invalid bearer token.");

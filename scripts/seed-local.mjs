@@ -9,7 +9,7 @@ import { buildSeedSql } from "./local-seed-fixture.mjs";
 import { spawnProcess } from "./shell.mjs";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const ownerEmail = "owner@hqbase.test";
+const ownerEmail = "owner@sovereign-mail.test";
 
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   await main();
@@ -19,7 +19,7 @@ export { buildSeedSql } from "./local-seed-fixture.mjs";
 
 export async function main() {
   const passwordHash = await hashSeedPassword(seedPassword());
-  const seedDirectory = mkdtempSync(path.join(tmpdir(), "hqbase-local-seed-"));
+  const seedDirectory = mkdtempSync(path.join(tmpdir(), "sovereign-mail-local-seed-"));
   const sqlPath = path.join(seedDirectory, "seed.sql");
 
   try {
@@ -34,7 +34,7 @@ export async function main() {
       throw new Error(`Local D1 seed failed with exit code ${result.status ?? "unknown"}.`);
     }
     process.stdout.write(
-      `Seeded local HQBase data. Sign in as ${ownerEmail} using HQBASE_LOCAL_SEED_PASSWORD.\n`
+      `Seeded local Sovereign Mail data. Sign in as ${ownerEmail} using SOVEREIGN_MAIL_LOCAL_SEED_PASSWORD.\n`
     );
   } finally {
     rmSync(seedDirectory, { force: true, recursive: true });
@@ -46,8 +46,8 @@ export function hashSeedPassword(password) {
 }
 
 function seedPassword() {
-  if (process.env.HQBASE_LOCAL_SEED_PASSWORD !== undefined) {
-    return validatePassword(process.env.HQBASE_LOCAL_SEED_PASSWORD);
+  if (process.env.SOVEREIGN_MAIL_LOCAL_SEED_PASSWORD !== undefined) {
+    return validatePassword(process.env.SOVEREIGN_MAIL_LOCAL_SEED_PASSWORD);
   }
 
   const devVarsPath = path.join(rootDir, ".dev.vars");
@@ -56,21 +56,23 @@ function seedPassword() {
     try {
       devVars = parseEnv(readFileSync(devVarsPath, "utf8"));
     } catch {
-      throw new Error("Could not parse .dev.vars while reading HQBASE_LOCAL_SEED_PASSWORD.");
+      throw new Error(
+        "Could not parse .dev.vars while reading SOVEREIGN_MAIL_LOCAL_SEED_PASSWORD."
+      );
     }
-    if (devVars.HQBASE_LOCAL_SEED_PASSWORD !== undefined) {
-      return validatePassword(devVars.HQBASE_LOCAL_SEED_PASSWORD);
+    if (devVars.SOVEREIGN_MAIL_LOCAL_SEED_PASSWORD !== undefined) {
+      return validatePassword(devVars.SOVEREIGN_MAIL_LOCAL_SEED_PASSWORD);
     }
   }
 
   throw new Error(
-    "Set HQBASE_LOCAL_SEED_PASSWORD in .dev.vars or the environment before seeding local data."
+    "Set SOVEREIGN_MAIL_LOCAL_SEED_PASSWORD in .dev.vars or the environment before seeding local data."
   );
 }
 
 function validatePassword(password) {
   if (password.length < 8 || password.length > 128) {
-    throw new Error("HQBASE_LOCAL_SEED_PASSWORD must be between 8 and 128 characters.");
+    throw new Error("SOVEREIGN_MAIL_LOCAL_SEED_PASSWORD must be between 8 and 128 characters.");
   }
   return password;
 }

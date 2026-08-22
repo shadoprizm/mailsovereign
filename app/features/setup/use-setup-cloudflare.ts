@@ -1,10 +1,22 @@
 import * as React from "react";
 import { toast } from "sonner";
 
-import { configureCloudflareDomain, listCloudflareZones, verifyCloudflareAccess } from "./api";
+import {
+  configureCloudflareDomain,
+  createCloudflareZone,
+  listCloudflareAccounts,
+  listCloudflareZones,
+  refreshCloudflareZone,
+  verifyCloudflareAccess
+} from "./api";
 import { buildAppHostname, customDomainSucceeded, inferWorkerName } from "./setup-helpers";
 import { hasErrors, validateDomain } from "./setup-validation";
-import type { CloudflareAccessStatus, CloudflareConfigureResult, CloudflareZone } from "./types";
+import type {
+  CloudflareAccessStatus,
+  CloudflareAccount,
+  CloudflareConfigureResult,
+  CloudflareZone
+} from "./types";
 
 export type ConfiguredDomain = { zone: CloudflareZone; result: CloudflareConfigureResult };
 
@@ -19,10 +31,11 @@ export function useSetupCloudflare(callbacks: {
   const [accessStatus, setAccessStatus] = React.useState<CloudflareAccessStatus | null>(null);
   const [tokenError, setTokenError] = React.useState<string | null>(null);
   const [zones, setZones] = React.useState<CloudflareZone[]>([]);
+  const [accounts, setAccounts] = React.useState<CloudflareAccount[]>([]);
   const [selectedZoneIds, setSelectedZoneIds] = React.useState<string[]>([]);
   const [portalZoneId, setPortalZoneId] = React.useState("");
   const workerName = React.useMemo(() => inferWorkerName(), []);
-  const [appSubdomain, setAppSubdomain] = React.useState("hqbase");
+  const [appSubdomain, setAppSubdomain] = React.useState("app");
   const [domainAttempted, setDomainAttempted] = React.useState(false);
   const [connectionError, setConnectionError] = React.useState<string | null>(null);
   const [results, setResults] = React.useState<ConfiguredDomain[]>([]);
@@ -67,13 +80,13 @@ export function useSetupCloudflare(callbacks: {
         setTokenError(`Cloudflare reports this authorization as ${verified.status}.`);
         return;
       }
-      const nextZones = await listCloudflareZones();
-      if (nextZones.length === 0) {
-        setTokenError("Cloudflare authorized HQBase, but no domains are available.");
-        return;
-      }
+      const [nextZones, nextAccounts] = await Promise.all([
+        listCloudflareZones(),
+        listCloudflareAccounts()
+      ]);
       setAccessStatus(verified);
       setZones(nextZones);
+      setAccounts(nextAccounts);
       callbacksRef.current.onTokenVerified();
     } catch (error) {
       setTokenError(error instanceof Error ? error.message : "Could not verify Cloudflare access.");
@@ -142,6 +155,15 @@ export function useSetupCloudflare(callbacks: {
     invalidateConnection();
   }
 
+  function updateZone(zone: CloudflareZone) {
+    setZones((current) =>
+      [...current.filter((candidate) => candidate.id !== zone.id), zone].sort((a, b) =>
+        a.name.localeCompare(b.name)
+      )
+    );
+    invalidateConnection();
+  }
+
   const update = (action: () => void) => {
     action();
     invalidateConnection();
@@ -153,6 +175,7 @@ export function useSetupCloudflare(callbacks: {
       onNext: () => window.location.assign("/api/setup/cloudflare/oauth/start")
     },
     domain: {
+      accounts,
       appHostname,
       appSubdomain,
       connectionError,
@@ -164,8 +187,11 @@ export function useSetupCloudflare(callbacks: {
       selectedZoneIds,
       selectedZones,
       zones,
+      createZone: createCloudflareZone,
       onConnect: () => void handleDomainConnect(),
       onToggleZone: toggleZone,
+      onZoneChange: updateZone,
+      refreshZone: refreshCloudflareZone,
       setAppSubdomain: (value: string) => update(() => setAppSubdomain(value)),
       setPortalZoneId: (value: string) => update(() => setPortalZoneId(value))
     },

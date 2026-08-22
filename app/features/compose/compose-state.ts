@@ -1,4 +1,5 @@
 import type * as React from "react";
+import { z } from "zod";
 import type { Draft } from "@/features/drafts/types";
 import type { Mailbox } from "@/features/mailboxes/types";
 import type { MessageDetail } from "@/features/messages/types";
@@ -6,7 +7,7 @@ import { formatDateTime } from "@/lib/format";
 import type { SendingIdentity } from "./compose-fields";
 
 export type ComposeMode = "new" | "reply" | "forward";
-export type DraftSaveState = "saved" | "saving" | "error";
+export type DraftSaveState = "saved" | "saving" | "editing-recipient" | "error";
 
 export type ComposeDialogProps = {
   defaultFromMailboxId?: string | null;
@@ -22,28 +23,26 @@ export type ComposeDialogProps = {
   onSent: () => void;
 };
 
-export function findDraftForComposer(
-  drafts: Draft[],
-  draftId: string | null,
-  replyToMessageId: string | null,
-  forwardOfMessageId: string | null
-): Draft | null {
-  return (
-    (draftId
-      ? drafts.find((draft) => draft.id === draftId)
-      : drafts.find(
-          (draft) =>
-            draft.replyToMessageId === replyToMessageId &&
-            draft.forwardOfMessageId === forwardOfMessageId
-        )) ?? null
-  );
+export function findDraftForComposer(drafts: Draft[], draftId: string | null): Draft | null {
+  return draftId ? (drafts.find((draft) => draft.id === draftId) ?? null) : null;
 }
+
+export const draftRecoveryKey = (draftId: string): string =>
+  `sovereign-mail:compose:draft:${draftId}`;
 
 export const splitRecipients = (value: string) =>
   value
     .split(/[,\n]/)
     .map((part) => part.trim())
     .filter(Boolean);
+
+const recipientAddressSchema = z.string().email().max(254);
+
+export function recipientInputsAreValid(...values: string[]): boolean {
+  return values.every((value) =>
+    splitRecipients(value).every((address) => recipientAddressSchema.safeParse(address).success)
+  );
+}
 
 export function replySendingIdentity(
   message: MessageDetail,
@@ -108,8 +107,21 @@ export const serializeDraft = (
   bcc: string,
   subject: string,
   text: string,
-  html: string
-) => JSON.stringify({ from, to, cc, bcc, subject, text, html: normalizeDraftHtml(text, html) });
+  html: string,
+  signatureMode: Draft["signatureMode"] = "none",
+  signatureId: string | null = null
+) =>
+  JSON.stringify({
+    from,
+    to,
+    cc,
+    bcc,
+    subject,
+    text,
+    html: normalizeDraftHtml(text, html),
+    signatureMode,
+    signatureId
+  });
 
 export function normalizeDraftHtml(text: string, html: string): string {
   return text.trim() ? html : "";
@@ -123,6 +135,8 @@ type Recovery = {
   subject: string;
   text: string;
   html: string;
+  signatureMode: Draft["signatureMode"];
+  signatureId: string | null;
   savedAt: number;
 };
 export function readDraftRecovery(key: string, serverUpdatedAt: string): Recovery | null {
@@ -143,9 +157,11 @@ export function composeTitle(mode: ComposeMode): string {
 export function draftStatus(state: DraftSaveState): string {
   return state === "saving"
     ? "Saving draft…"
-    : state === "error"
-      ? "Draft not saved"
-      : "Draft saved";
+    : state === "editing-recipient"
+      ? "Typing recipient…"
+      : state === "error"
+        ? "Draft not saved"
+        : "Draft saved";
 }
 
 export function forwardedMessage(message: MessageDetail): { html: string; text: string } {

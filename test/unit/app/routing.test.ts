@@ -26,6 +26,11 @@ describe("application routing", () => {
     expect(readAppRoute(appRoutePath(route))).toEqual(route);
   });
 
+  it("round-trips the private Contacts route", () => {
+    expect(readAppRoute("/contacts")).toEqual({ kind: "contacts" });
+    expect(appRoutePath({ kind: "contacts" })).toBe("/contacts");
+  });
+
   it("gives every Settings page a canonical route", () => {
     for (const tab of settingsTabs) {
       const path = `/settings/${tab}`;
@@ -41,6 +46,7 @@ describe("application routing", () => {
     });
     expect(readAppRoute("/?settings=updates")).toEqual({ kind: "settings", tab: "updates" });
     expect(readAppRoute("/settings/general")).toEqual({ kind: "settings", tab: "debug" });
+    expect(readAppRoute("/settings/service")).toEqual({ kind: "settings", tab: "ai" });
     expect(readAppRoute("/catchall")).toEqual({
       kind: "mail",
       folder: "catchall",

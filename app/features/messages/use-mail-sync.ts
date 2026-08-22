@@ -66,7 +66,7 @@ export function useMailSync({ activeFolder, mailboxId, search, userId }: MailSyn
 
       const [notificationResult, conversationResult] = await Promise.allSettled([
         refreshNotifications(),
-        activeFolder === "settings" || activeFolder === "drafts"
+        activeFolder === "settings" || activeFolder === "drafts" || activeFolder === "contacts"
           ? Promise.resolve<null>(null)
           : listConversations({
               folder: activeFolder,
@@ -146,7 +146,7 @@ export function useMailSync({ activeFolder, mailboxId, search, userId }: MailSyn
       if (document.visibilityState === "visible") runRefresh();
     };
     const handleServiceWorkerMessage = (event: MessageEvent): void => {
-      if (event.data?.type === "hqbase:push-received") runRefresh();
+      if (event.data?.type === "sovereign-mail:push-received") runRefresh();
     };
 
     runRefresh(true);
@@ -164,7 +164,13 @@ export function useMailSync({ activeFolder, mailboxId, search, userId }: MailSyn
   }, [refresh, userId]);
 
   const loadMore = React.useCallback((): Promise<void> => {
-    if (!userId || !nextCursor || activeFolder === "settings" || activeFolder === "drafts") {
+    if (
+      !userId ||
+      !nextCursor ||
+      activeFolder === "settings" ||
+      activeFolder === "drafts" ||
+      activeFolder === "contacts"
+    ) {
       return Promise.resolve();
     }
     if (

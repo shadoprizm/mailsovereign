@@ -18,23 +18,28 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { CloudflareZoneCreator } from "./cloudflare-zone-creator";
 import type { DomainErrors } from "./setup-validation";
 import { WizardActions, WizardPanel } from "./setup-wizard-parts";
-import type { CloudflareConfigureResult, CloudflareZone } from "./types";
+import type { CloudflareAccount, CloudflareConfigureResult, CloudflareZone } from "./types";
 import type { ConfiguredDomain } from "./use-setup-cloudflare";
 
 export function DomainStep(props: {
+  accounts: CloudflareAccount[];
   appHostname: string;
   appSubdomain: string;
   connectionError: string | null;
+  createZone: (input: { accountId: string; name: string }) => Promise<CloudflareZone>;
   errors: DomainErrors;
   isLoading: boolean;
   onBack: () => void;
   onConnect: () => void;
   onToggleZone: (zoneId: string, selected: boolean) => void;
+  onZoneChange: (zone: CloudflareZone) => void;
   portalZone: CloudflareZone | null;
   portalZoneId: string;
   results: ConfiguredDomain[];
+  refreshZone: (zoneId: string) => Promise<CloudflareZone>;
   selectedZoneIds: string[];
   selectedZones: CloudflareZone[];
   setAppSubdomain: (value: string) => void;
@@ -66,6 +71,13 @@ export function DomainStep(props: {
           <AlertDescription>{props.connectionError}</AlertDescription>
         </Alert>
       ) : null}
+      <CloudflareZoneCreator
+        accounts={props.accounts}
+        createZone={props.createZone}
+        pendingZones={props.zones.filter((zone) => zone.status === "pending")}
+        refreshZone={props.refreshZone}
+        onZoneChange={props.onZoneChange}
+      />
       <Field data-invalid={Boolean(props.errors.selectedZoneIds)}>
         <FieldLabelRow>
           <FieldLabel>Select email domains</FieldLabel>
@@ -85,6 +97,7 @@ export function DomainStep(props: {
                 >
                   <Checkbox
                     checked={props.selectedZoneIds.includes(zone.id)}
+                    disabled={zone.status !== "active"}
                     id={`domain-${zone.id}`}
                     onCheckedChange={(checked) => props.onToggleZone(zone.id, checked === true)}
                   />
@@ -184,7 +197,7 @@ function CompactDomainChecks({ result }: { result: CloudflareConfigureResult }) 
     })),
     {
       label: "Readiness check",
-      message: result.status.ready ? null : describeReadinessFailure(result.status),
+      message: result.status.ready ? null : describeReadinessFailure(result),
       status: result.status.ready ? ("success" as const) : ("failed" as const)
     }
   ];
@@ -230,12 +243,13 @@ function compactStepLabel(id: string, fallback: string): string {
   if (id === "custom-domain") return "Attach app URL";
   if (id === "service-domain") return "Attach service URL";
   if (id === "routing") return "Email Routing + DNS";
-  if (id === "catch-all") return "Catch-all → HQBase";
+  if (id === "catch-all") return "Catch-all → Sovereign Mail";
   if (id === "sending") return "Outbound sending";
   return fallback;
 }
 
-function describeReadinessFailure(status: CloudflareConfigureResult["status"]): string {
+function describeReadinessFailure(result: CloudflareConfigureResult): string {
+  const { status } = result;
   const issues: string[] = [];
   if (status.zone.status !== "active") issues.push("The Cloudflare domain is not active.");
   if (!status.routing.enabled) {
@@ -248,9 +262,12 @@ function describeReadinessFailure(status: CloudflareConfigureResult["status"]): 
     );
   }
   if (!status.catchAll.enabled || !status.catchAll.configuredForWorker) {
-    issues.push(status.catchAll.error ?? "Catch-all is not routing to this HQBase Worker.");
+    issues.push(status.catchAll.error ?? "Catch-all is not routing to this Sovereign Mail Worker.");
   }
-  if (!status.sending.enabled) {
+  const sendingSkipped = result.steps.some(
+    (step) => step.id === "sending" && step.status === "skipped"
+  );
+  if (!sendingSkipped && !status.sending.enabled) {
     issues.push(status.sending.error ?? "Email Sending is not enabled.");
   }
   return issues.join(" ") || "Cloudflare has not reported this domain as ready yet.";

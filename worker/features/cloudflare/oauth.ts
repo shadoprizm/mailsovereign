@@ -10,9 +10,9 @@ import {
   resolveOAuthConfig
 } from "./oauth-config";
 
-const VERIFIER_COOKIE = "hqb_cf_oauth_verifier";
-const STATE_COOKIE = "hqb_cf_oauth_state";
-const GRANT_COOKIE = "hqb_cf_oauth_grant";
+const VERIFIER_COOKIE = "sovereign_mail_cf_oauth_verifier";
+const STATE_COOKIE = "sovereign_mail_cf_oauth_state";
+const GRANT_COOKIE = "sovereign_mail_cf_oauth_grant";
 const OAUTH_COOKIE_TTL_SECONDS = 10 * 60;
 const GRANT_COOKIE_TTL_SECONDS = 15 * 60;
 const TOKEN_ENDPOINT = "https://dash.cloudflare.com/oauth2/token";
@@ -49,7 +49,7 @@ export async function startRuntimeCloudflareOAuth(
   const verifier = randomBase64Url(64);
   const state = randomBase64Url(32);
   const codeChallenge = await sha256Base64Url(verifier);
-  const target = cloudflareAuthorizationUrl(request, config, flow, state, codeChallenge);
+  const target = cloudflareAuthorizationUrl(config, flow, state, codeChallenge);
 
   const headers = new Headers({ "cache-control": "no-store", location: target.toString() });
   headers.append("set-cookie", secureCookie(VERIFIER_COOKIE, verifier, OAUTH_COOKIE_TTL_SECONDS));
@@ -74,7 +74,12 @@ export async function finishRuntimeCloudflareOAuth(
     url.searchParams.get("state") === expectedState;
 
   if (!stateIsValid) return oauthResultRedirect(request, "invalid", flow);
-  if (url.searchParams.get("error")) return oauthResultRedirect(request, "denied", flow);
+  const providerError = url.searchParams.get("error");
+  if (providerError) {
+    const errorCode = boundedOAuthErrorCode(providerError);
+    console.warn(JSON.stringify({ event: "cloudflare_oauth_denied", error: errorCode }));
+    return oauthResultRedirect(request, "denied", flow, { cloudflareError: errorCode });
+  }
 
   const code = url.searchParams.get("code") ?? "";
   if (!code) return oauthResultRedirect(request, "invalid", flow);
@@ -125,7 +130,7 @@ export async function resolveRuntimeCloudflareGrant(
   if (!grant) {
     throw new AppError(
       "CLOUDFLARE_ACCESS_REQUIRED",
-      "Authorize Cloudflare again. If your organization blocks the public HQBase OAuth application, configure customer-managed OAuth and retry.",
+      "Authorize Cloudflare again with this installation's customer-managed OAuth application.",
       401
     );
   }
@@ -179,26 +184,39 @@ async function readGrant(request: Request, env: OAuthCookieEnv): Promise<string 
 function oauthResultRedirect(
   request: Request,
   result: string,
-  flow: RuntimeCloudflareOAuthFlow
+  flow: RuntimeCloudflareOAuthFlow,
+  details: { cloudflareError?: string } = {}
 ): Response {
-  return new Response(null, { headers: oauthResultHeaders(request, result, flow), status: 303 });
+  return new Response(null, {
+    headers: oauthResultHeaders(request, result, flow, details),
+    status: 303
+  });
 }
 
 function oauthResultHeaders(
   request: Request,
   result: string,
-  flow: RuntimeCloudflareOAuthFlow
+  flow: RuntimeCloudflareOAuthFlow,
+  details: { cloudflareError?: string } = {}
 ): Headers {
   const target = new URL(
     "returnPath" in flow ? flow.returnPath : `/settings/${flow.settingsTab}`,
     request.url
   );
   target.searchParams.set("cloudflare", result);
+  if (details.cloudflareError) {
+    target.searchParams.set("cloudflare_error", details.cloudflareError);
+  }
   if ("settingsTab" in flow) target.searchParams.set("settings", flow.settingsTab);
   const headers = new Headers({ "cache-control": "no-store", location: target.toString() });
   headers.append("set-cookie", secureCookie(VERIFIER_COOKIE, "", 0));
   headers.append("set-cookie", secureCookie(STATE_COOKIE, "", 0));
   return headers;
+}
+
+function boundedOAuthErrorCode(value: string): string {
+  const code = value.trim().slice(0, 64);
+  return /^[a-z][a-z0-9_]{0,63}$/.test(code) ? code : "unknown_error";
 }
 
 async function encryptGrant(accessToken: string, secret: string): Promise<string> {
@@ -225,7 +243,7 @@ async function decryptGrant(value: string, secret: string): Promise<string> {
 async function grantKey(secret: string, usages: KeyUsage[]): Promise<CryptoKey> {
   const material = await crypto.subtle.digest(
     "SHA-256",
-    new TextEncoder().encode(`hqbase-runtime-cloudflare-oauth:${secret}`)
+    new TextEncoder().encode(`sovereign-mail-runtime-cloudflare-oauth:${secret}`)
   );
   return crypto.subtle.importKey("raw", material, "AES-GCM", false, usages);
 }

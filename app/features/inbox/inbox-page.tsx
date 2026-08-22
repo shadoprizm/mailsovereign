@@ -1,5 +1,6 @@
 import * as React from "react";
 import { usePanelRef } from "react-resizable-panels";
+import { toast } from "sonner";
 
 import {
   conversationListWidthStorageKey,
@@ -12,7 +13,11 @@ import {
 } from "@/components/layout/desktop-layout";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import type { Mailbox } from "@/features/mailboxes/types";
-import { getMessageThread, runConversationAction } from "@/features/messages/api";
+import {
+  deleteConversation,
+  getMessageThread,
+  runConversationAction
+} from "@/features/messages/api";
 import { MessageDetail } from "@/features/messages/message-detail";
 import { MessageList } from "@/features/messages/message-list";
 import type {
@@ -173,6 +178,15 @@ export function InboxPage({
     await loadThread(selectedId);
   }
 
+  async function handleDelete(): Promise<void> {
+    if (!selectedId || activeFolder !== "trash") return;
+    const deleted = await deleteConversation(selectedId);
+    onConversationAction(deleted.threadId, "trash", deleted.affected);
+    onMessageRouteChange(activeFolder, null);
+    void Promise.resolve(onRefresh()).catch(() => undefined);
+    toast.success("Conversation deleted permanently.");
+  }
+
   const listSection = (
     <section
       className={cn(
@@ -216,6 +230,7 @@ export function InboxPage({
       data-mobile-view="conversation"
     >
       <MessageDetail
+        activeFolder={activeFolder}
         defaultFromMailboxId={defaultFromMailboxId}
         error={detailError}
         isLoading={detailLoading}
@@ -227,6 +242,7 @@ export function InboxPage({
         onAction={(action) => void handleAction(action)}
         onBack={() => onMessageRouteChange(activeFolder, null)}
         {...(onDraftsChange ? { onDraftsChange } : {})}
+        onDelete={handleDelete}
         onRefresh={async () => {
           await onRefresh();
           if (selectedId) await loadThread(selectedId);
@@ -250,7 +266,7 @@ export function InboxPage({
 
   return (
     <ResizablePanelGroup
-      id="hqbase-conversation-workspace"
+      id="sovereign-mail-conversation-workspace"
       onLayoutChanged={() => {
         const size = conversationListPanelRef.current?.getSize();
         if (size) {

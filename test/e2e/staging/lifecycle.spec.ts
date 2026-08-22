@@ -6,13 +6,13 @@ import {
   test
 } from "@playwright/test";
 
-const email = required("HQBASE_STAGING_OWNER_EMAIL");
-const password = required("HQBASE_STAGING_OWNER_PASSWORD");
-const sender = required("HQBASE_STAGING_SENDER");
-const domain = required("HQBASE_STAGING_EMAIL_DOMAIN");
-const stagingUrl = required("HQBASE_STAGING_URL");
+const email = required("SOVEREIGN_MAIL_STAGING_OWNER_EMAIL");
+const password = required("SOVEREIGN_MAIL_STAGING_OWNER_PASSWORD");
+const sender = required("SOVEREIGN_MAIL_STAGING_SENDER");
+const domain = required("SOVEREIGN_MAIL_STAGING_EMAIL_DOMAIN");
+const stagingUrl = required("SOVEREIGN_MAIL_STAGING_URL");
 
-test("HQBase web lifecycle remains healthy", async ({ page, request }) => {
+test("Sovereign Mail web lifecycle remains healthy", async ({ page, request }) => {
   const appOrigin = new URL(stagingUrl).origin;
   const appShellErrors: string[] = [];
   const recordAppShellError = (message: string): void => {
@@ -51,14 +51,14 @@ test("HQBase web lifecycle remains healthy", async ({ page, request }) => {
   expect(status.ok()).toBeTruthy();
   const setup = (await status.json()) as { isComplete: boolean };
   if (!setup.isComplete) {
-    const grantCookie = stagingSetupGrantCookie(required("HQBASE_STAGING_AUTH_SECRET"));
+    const grantCookie = stagingSetupGrantCookie(required("SOVEREIGN_MAIL_STAGING_AUTH_SECRET"));
     const bootstrap = await request.post("/api/setup/bootstrap", {
       data: {
         checklistAcknowledged: true,
         defaultFromMailboxAddress: sender,
-        mailboxes: [{ address: sender, displayName: "HQBase E2E" }],
+        mailboxes: [{ address: sender, displayName: "Sovereign Mail E2E" }],
         ownerEmail: email,
-        ownerName: "HQBase E2E Owner",
+        ownerName: "Sovereign Mail E2E Owner",
         ownerPassword: password,
         primaryDomain: domain
       },
@@ -92,7 +92,7 @@ test("HQBase web lifecycle remains healthy", async ({ page, request }) => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(
       loginEmail.or(primaryEmailAction),
-      "HQBase app shell renders its authenticated state"
+      "Sovereign Mail app shell renders its authenticated state"
     ).toBeVisible({ timeout: 60_000 });
   } catch (error) {
     const shell = await page.evaluate(() => ({
@@ -103,7 +103,7 @@ test("HQBase web lifecycle remains healthy", async ({ page, request }) => {
       ),
       title: document.title
     }));
-    console.error("HQBase app shell diagnostics", { appShellErrors, shell });
+    console.error("Sovereign Mail app shell diagnostics", { appShellErrors, shell });
     throw error;
   }
   if (await loginEmail.isVisible()) {
@@ -112,7 +112,7 @@ test("HQBase web lifecycle remains healthy", async ({ page, request }) => {
     await page.getByRole("button", { name: "Continue" }).click();
   }
   await expect(primaryEmailAction).toBeVisible({ timeout: 60_000 });
-  const expectedUpdate = process.env.HQBASE_STAGING_EXPECT_UPDATE_VERSION;
+  const expectedUpdate = process.env.SOVEREIGN_MAIL_STAGING_EXPECT_UPDATE_VERSION;
   if (expectedUpdate) {
     await expect
       .poll(
@@ -137,7 +137,7 @@ test("HQBase web lifecycle remains healthy", async ({ page, request }) => {
         timeout: 15_000
       });
     }).toPass({ intervals: [2_000, 5_000, 10_000], timeout: 60_000 });
-    await expect(page.getByText(`HQBase ${expectedUpdate}`, { exact: false })).toBeVisible({
+    await expect(page.getByText(`Sovereign Mail ${expectedUpdate}`, { exact: false })).toBeVisible({
       timeout: 60_000
     });
   }
@@ -162,7 +162,7 @@ test("Track 1 enforces read-only mailbox access and exposes operator diagnostics
 
   const suffix = `${Date.now()}-${process.env.GITHUB_RUN_ID ?? "local"}`;
   const loginDomain = email.split("@")[1];
-  if (!loginDomain) throw new Error("HQBASE_STAGING_OWNER_EMAIL must contain a domain.");
+  if (!loginDomain) throw new Error("SOVEREIGN_MAIL_STAGING_OWNER_EMAIL must contain a domain.");
   const memberEmail = `kirill-${suffix}@${loginDomain}`;
   const memberPassword = `${password}Track1!`;
   const member = await createStagingMember(request, {
@@ -270,8 +270,8 @@ async function createStagingMember(
 }
 
 function accessHeaders(): Record<string, string> {
-  const clientId = process.env.HQBASE_STAGING_ACCESS_CLIENT_ID;
-  const clientSecret = process.env.HQBASE_STAGING_ACCESS_CLIENT_SECRET;
+  const clientId = process.env.SOVEREIGN_MAIL_STAGING_ACCESS_CLIENT_ID;
+  const clientSecret = process.env.SOVEREIGN_MAIL_STAGING_ACCESS_CLIENT_SECRET;
   return clientId && clientSecret
     ? { "CF-Access-Client-Id": clientId, "CF-Access-Client-Secret": clientSecret }
     : {};
@@ -279,18 +279,20 @@ function accessHeaders(): Record<string, string> {
 
 function stagingSetupGrantCookie(secret: string): string {
   const iv = randomBytes(12);
-  const key = createHash("sha256").update(`hqbase-runtime-cloudflare-oauth:${secret}`).digest();
+  const key = createHash("sha256")
+    .update(`sovereign-mail-runtime-cloudflare-oauth:${secret}`)
+    .digest();
   const cipher = createCipheriv("aes-256-gcm", key, iv);
   const encrypted = Buffer.concat([
-    cipher.update("hqbase-staging-oauth-grant", "utf8"),
+    cipher.update("sovereign-mail-staging-oauth-grant", "utf8"),
     cipher.final(),
     cipher.getAuthTag()
   ]);
-  return `hqb_cf_oauth_grant=${encodeURIComponent(`${iv.toString("base64url")}.${encrypted.toString("base64url")}`)}`;
+  return `sovereign_mail_cf_oauth_grant=${encodeURIComponent(`${iv.toString("base64url")}.${encrypted.toString("base64url")}`)}`;
 }
 
 function required(name: string): string {
   const value = process.env[name];
-  if (!value) throw new Error(`${name} is required for HQBase staging E2E.`);
+  if (!value) throw new Error(`${name} is required for Sovereign Mail staging E2E.`);
   return value;
 }

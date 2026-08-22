@@ -8,9 +8,9 @@ import { inspectActiveRelease } from "./active-version.mjs";
 import { capture, run } from "./command.mjs";
 import {
   compareVersions,
-  hqbaseReleaseTag,
   loadVerifiedRelease,
   normalizeConfig,
+  sovereignMailReleaseTag,
   verifyManifest
 } from "./manifest.mjs";
 import {
@@ -27,27 +27,27 @@ export {
   compareVersions,
   deploySource,
   executeSql,
-  hqbaseReleaseTag,
   loadVerifiedRelease,
   missingRequiredSecrets,
   needsInitialAuthSecret,
   normalizeConfig,
+  sovereignMailReleaseTag,
   verifyManifest,
   workerNameFromConfig
 };
 
 export async function deploy(options = {}) {
   const configFile = resolve(options.configFile ?? resolve(root, "wrangler.jsonc"));
-  if (process.env.HQBASE_FORCE_SOURCE_DEPLOY === "1") return sourceDeploy(root);
+  if (process.env.SOVEREIGN_MAIL_FORCE_SOURCE_DEPLOY === "1") return sourceDeploy(root);
   const { bytes, manifest } = await loadVerifiedRelease({
-    artifactFile: options.artifactFile ?? process.env.HQBASE_RELEASE_ARTIFACT_FILE,
-    expectedVersion: options.expectedVersion ?? process.env.HQBASE_EXPECTED_RELEASE_VERSION,
+    artifactFile: options.artifactFile ?? process.env.SOVEREIGN_MAIL_RELEASE_ARTIFACT_FILE,
+    expectedVersion: options.expectedVersion ?? process.env.SOVEREIGN_MAIL_EXPECTED_RELEASE_VERSION,
     fetcher: options.fetcher,
-    manifestFile: options.manifestFile ?? process.env.HQBASE_RELEASE_MANIFEST_FILE,
-    manifestUrl: process.env.HQBASE_RELEASE_MANIFEST_URL
+    manifestFile: options.manifestFile ?? process.env.SOVEREIGN_MAIL_RELEASE_MANIFEST_FILE,
+    manifestUrl: process.env.SOVEREIGN_MAIL_RELEASE_MANIFEST_URL
   });
 
-  const workspace = mkdtempSync(resolve(tmpdir(), "hqbase-release-"));
+  const workspace = mkdtempSync(resolve(tmpdir(), "sovereign-mail-release-"));
   let recovery = null;
   try {
     const archive = resolve(workspace, "release.tar.gz");
@@ -64,7 +64,7 @@ export async function deploy(options = {}) {
     run("pnpm", ["install", "--frozen-lockfile"], source);
     run("pnpm", ["build"], source);
     const activeRelease = inspectActiveRelease(source, config.name);
-    const releaseTag = hqbaseReleaseTag(manifest.version, manifest.artifact.sha256);
+    const releaseTag = sovereignMailReleaseTag(manifest.version, manifest.artifact.sha256);
     if (!activeRelease) {
       applyMigrations(source);
       deploySource(source, { releaseTag });
@@ -72,20 +72,20 @@ export async function deploy(options = {}) {
         source,
         `UPDATE release_state SET installed_version = ${quote(manifest.version)}, installed_schema_version = ${manifest.schemaVersion}, updated_at = datetime('now') WHERE singleton = 1`
       );
-      run("pnpm", ["hqbase", "postdeploy"], source);
-      console.log(`HQBase ${manifest.version} installed from its signed release.`);
+      run("pnpm", ["sovereign-mail", "postdeploy"], source);
+      console.log(`Sovereign Mail ${manifest.version} installed from its signed release.`);
       return;
     }
     if (compareVersions(activeRelease.version, manifest.version) > 0) {
-      throw new Error("The active HQBase Worker is newer than the signed stable release.");
+      throw new Error("The active Sovereign Mail Worker is newer than the signed stable release.");
     }
     if (compareVersions(activeRelease.version, manifest.minVersion) < 0) {
       throw new Error(
-        `HQBase ${activeRelease.version} cannot update directly to ${manifest.version}.`
+        `Sovereign Mail ${activeRelease.version} cannot update directly to ${manifest.version}.`
       );
     }
     if (activeRelease.version === manifest.version && activeRelease.tag === releaseTag) {
-      console.log(`HQBase ${manifest.version} is already the active signed release.`);
+      console.log(`Sovereign Mail ${manifest.version} is already the active signed release.`);
       return;
     }
 
@@ -132,7 +132,7 @@ export async function deploy(options = {}) {
         "--tag",
         releaseTag,
         "--var",
-        `HQBASE_WORKER_NAME:${config.name}`
+        `SOVEREIGN_MAIL_WORKER_NAME:${config.name}`
       ],
       source
     );
@@ -155,7 +155,7 @@ export async function deploy(options = {}) {
       source,
       `UPDATE release_state SET installed_version = ${quote(manifest.version)}, installed_schema_version = ${manifest.schemaVersion}, updated_at = datetime('now') WHERE singleton = 1; UPDATE update_history SET state = 'verified', completed_at = datetime('now') WHERE id = ${quote(updateId)}`
     );
-    console.log(`HQBase updated to ${manifest.version}.`);
+    console.log(`Sovereign Mail updated to ${manifest.version}.`);
   } catch (error) {
     if (recovery) reportRecovery(recovery);
     throw error;
@@ -168,7 +168,7 @@ function sourceDeploy(cwd) {
   run("pnpm", ["build"], cwd);
   run("pnpm", ["db:migrate:remote"], cwd);
   deploySource(cwd);
-  run("pnpm", ["hqbase", "postdeploy"], cwd);
+  run("pnpm", ["sovereign-mail", "postdeploy"], cwd);
 }
 
 function applyMigrations(cwd) {

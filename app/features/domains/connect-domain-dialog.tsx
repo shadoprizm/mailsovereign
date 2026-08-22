@@ -22,8 +22,15 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { CloudflareAuthorizationFlow } from "@/features/settings/cloudflare-authorization-dialog";
-import type { CloudflareZone } from "@/features/setup/types";
-import { listAvailableCloudflareZones, provisionDomain } from "./api";
+import { CloudflareZoneCreator } from "@/features/setup/cloudflare-zone-creator";
+import type { CloudflareAccount, CloudflareZone } from "@/features/setup/types";
+import {
+  createCloudflareZone,
+  listAvailableCloudflareAccounts,
+  listAvailableCloudflareZones,
+  provisionDomain,
+  refreshCloudflareZone
+} from "./api";
 import type { MailDomain } from "./types";
 
 export function ConnectDomainDialog({
@@ -42,24 +49,28 @@ export function ConnectDomainDialog({
   onOpenChange: (open: boolean) => void;
 }): React.ReactElement {
   const [zones, setZones] = React.useState<CloudflareZone[]>([]);
+  const [accounts, setAccounts] = React.useState<CloudflareAccount[]>([]);
   const [zoneId, setZoneId] = React.useState("");
   const [name, setName] = React.useState("");
   const [pending, setPending] = React.useState(false);
 
   const loadZones = React.useCallback(async () => {
     try {
-      const next = (await listAvailableCloudflareZones()).filter(
-        (zone) => zone.status === "active"
-      );
-      setZones(next);
+      const [nextZones, nextAccounts] = await Promise.all([
+        listAvailableCloudflareZones(),
+        listAvailableCloudflareAccounts()
+      ]);
+      setZones(nextZones);
+      setAccounts(nextAccounts);
+      const active = nextZones.filter((zone) => zone.status === "active");
       const migrated = domains.find((domain) => !domain.zoneId);
-      const selected = next.find((zone) => zone.name === migrated?.name) ?? next[0];
+      const selected = active.find((zone) => zone.name === migrated?.name) ?? active[0];
       if (selected) {
         setZoneId(selected.id);
         setName(selected.name);
       }
       toast.success(
-        `${next.length} active Cloudflare domain${next.length === 1 ? "" : "s"} loaded.`
+        `${active.length} active Cloudflare domain${active.length === 1 ? "" : "s"} loaded.`
       );
     } catch (error) {
       toast.error(
@@ -76,6 +87,18 @@ export function ConnectDomainDialog({
     const selected = source.find((zone) => zone.id === id);
     setZoneId(id);
     setName(selected?.name ?? "");
+  }
+
+  function updateZone(zone: CloudflareZone) {
+    setZones((current) =>
+      [...current.filter((candidate) => candidate.id !== zone.id), zone].sort((a, b) =>
+        a.name.localeCompare(b.name)
+      )
+    );
+    if (zone.status === "active") {
+      setZoneId(zone.id);
+      setName(zone.name);
+    }
   }
 
   async function connect(event: React.FormEvent<HTMLFormElement>) {
@@ -97,6 +120,7 @@ export function ConnectDomainDialog({
     setName("");
     setZoneId("");
     setZones([]);
+    setAccounts([]);
   }
 
   return (
@@ -110,32 +134,42 @@ export function ConnectDomainDialog({
       <DialogTrigger asChild>
         <Button type="button">
           <Plus data-icon="inline-start" />
-          Connect domain
+          Add direct-delivery domain
         </Button>
       </DialogTrigger>
-      <DialogContent className="w-[min(92vw,520px)]">
+      <DialogContent className="max-h-[90vh] w-[min(94vw,720px)] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Connect domain</DialogTitle>
+          <DialogTitle>Direct delivery with Cloudflare</DialogTitle>
           <DialogDescription>
-            Load an active Cloudflare zone, then connect it to HQBase.
+            Advanced: replace an external mailbox provider with Cloudflare delivery and the
+            Sovereign Mail web inbox. Your website host does not change.
           </DialogDescription>
         </DialogHeader>
         {authorized ? (
           <form className="flex flex-col gap-5" onSubmit={(event) => void connect(event)}>
+            <CloudflareZoneCreator
+              accounts={accounts}
+              createZone={createCloudflareZone}
+              pendingZones={zones.filter((zone) => zone.status === "pending")}
+              refreshZone={refreshCloudflareZone}
+              onZoneChange={updateZone}
+            />
             <FieldGroup>
               <Field>
-                <FieldLabel>Cloudflare domain</FieldLabel>
+                <FieldLabel>Active Cloudflare domain</FieldLabel>
                 <Select required value={zoneId} onValueChange={chooseZone}>
                   <SelectTrigger aria-label="Cloudflare domain">
                     <SelectValue placeholder="Choose an active domain" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
-                      {zones.map((zone) => (
-                        <SelectItem key={zone.id} value={zone.id}>
-                          {zone.name}
-                        </SelectItem>
-                      ))}
+                      {zones
+                        .filter((zone) => zone.status === "active")
+                        .map((zone) => (
+                          <SelectItem key={zone.id} value={zone.id}>
+                            {zone.name}
+                          </SelectItem>
+                        ))}
                     </SelectGroup>
                   </SelectContent>
                 </Select>
@@ -148,7 +182,7 @@ export function ConnectDomainDialog({
                 </Button>
               </DialogClose>
               <Button disabled={pending || !name || !zoneId} type="submit">
-                {pending ? "Connecting domain…" : "Connect domain"}
+                {pending ? "Connecting domain…" : "Use direct delivery"}
               </Button>
             </DialogFooter>
           </form>

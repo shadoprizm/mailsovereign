@@ -266,8 +266,8 @@ export function TemporaryPasswordReveal({
         <KeyRound />
         <AlertTitle>Shown once</AlertTitle>
         <AlertDescription>
-          HQBase stores only the password hash. The user must replace this password after signing
-          in.
+          Sovereign Mail stores only the password hash. The user must replace this password after
+          signing in.
         </AlertDescription>
       </Alert>
       <div className="flex items-center gap-2">

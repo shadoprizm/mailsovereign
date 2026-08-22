@@ -14,6 +14,10 @@ export async function removeMailboxAddress(mailboxId: string, addressId: string)
   return apiDelete(`/api/mailboxes/${mailboxId}/addresses/${addressId}`);
 }
 
+export async function removeMailbox(mailboxId: string, confirmation: string): Promise<void> {
+  return apiDelete(`/api/mailboxes/${mailboxId}`, { confirmation });
+}
+
 export async function createMailbox(input: {
   address: string;
   displayName: string;

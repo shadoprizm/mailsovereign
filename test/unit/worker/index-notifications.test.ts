@@ -19,6 +19,20 @@ const storedMessage = {
   threadId: "thr_1"
 };
 
+function inboundMessage(): ForwardableEmailMessage {
+  const raw = new TextEncoder().encode("From: sender@example.com\r\n\r\nHello");
+  return {
+    to: "owner@example.com",
+    raw: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(raw);
+        controller.close();
+      }
+    }),
+    rawSize: raw.byteLength
+  } as unknown as ForwardableEmailMessage;
+}
+
 describe("inbound notification scheduling", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -30,7 +44,7 @@ describe("inbound notification scheduling", () => {
     const waitUntil = vi.fn();
 
     await worker.email(
-      {} as ForwardableEmailMessage,
+      inboundMessage(),
       {} as WorkerEnv,
       { waitUntil } as unknown as ExecutionContext
     );
@@ -44,7 +58,7 @@ describe("inbound notification scheduling", () => {
     const waitUntil = vi.fn();
 
     await worker.email(
-      {} as ForwardableEmailMessage,
+      inboundMessage(),
       {} as WorkerEnv,
       { waitUntil } as unknown as ExecutionContext
     );

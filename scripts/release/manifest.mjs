@@ -6,8 +6,9 @@ import { workerNameFromConfig } from "./worker-deploy.mjs";
 
 const root = resolve(import.meta.dirname, "../..");
 const packageVersion = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")).version;
-const publicKey = "MCowBQYDK2VwAyEARmCVvXVUDzwewmIDAVez9Uyv2K+7ylU6+YhR5iN2WTc=";
-const stableManifestUrl = "https://github.com/HQBase/hqbase/releases/latest/download/stable.json";
+const publicKey = "MCowBQYDK2VwAyEAKU60wrkOp4IjXvkJQuv/GZnN8+utV4YWvUnfNJVorxA=";
+const stableManifestUrl =
+  "https://github.com/shadoprizm/mailsovereign/releases/latest/download/stable.json";
 
 export async function loadVerifiedRelease(options = {}) {
   const fetcher = options.fetcher ?? fetch;
@@ -23,12 +24,12 @@ export async function loadVerifiedRelease(options = {}) {
   if (options.expectedVersion) {
     if (manifest.version !== options.expectedVersion) {
       throw new Error(
-        `Expected signed HQBase ${options.expectedVersion}, received ${manifest.version}.`
+        `Expected signed Sovereign Mail ${options.expectedVersion}, received ${manifest.version}.`
       );
     }
   } else if (compareVersions(manifest.version, options.checkedOutVersion ?? packageVersion) < 0) {
     throw new Error(
-      `HQBase ${options.checkedOutVersion ?? packageVersion} has not been published as a signed stable release yet.`
+      `Sovereign Mail ${options.checkedOutVersion ?? packageVersion} has not been published as a signed stable release yet.`
     );
   }
 
@@ -68,8 +69,8 @@ export function verifyManifest(envelope, publicKeyBase64 = publicKey) {
   }
   const manifest = JSON.parse(Buffer.from(envelope.payload, "base64url").toString("utf8"));
   if (
-    manifest.format !== "hqbase-release-v1" ||
-    manifest.product !== "hqbase" ||
+    manifest.format !== "sovereign-mail-release-v1" ||
+    manifest.product !== "sovereign-mail" ||
     manifest.channel !== "stable" ||
     !/^\d+\.\d+\.\d+/.test(manifest.version) ||
     !/^\d+\.\d+\.\d+/.test(manifest.minVersion) ||
@@ -115,9 +116,9 @@ export function normalizeConfig(config, version, artifactSha256) {
     },
     vars: {
       ...config.vars,
-      HQBASE_APP_VERSION: version,
-      ...(artifactSha256 ? { HQBASE_RELEASE_ARTIFACT_SHA256: artifactSha256 } : {}),
-      HQBASE_WORKER_NAME: workerNameFromConfig(config)
+      SOVEREIGN_MAIL_APP_VERSION: version,
+      ...(artifactSha256 ? { SOVEREIGN_MAIL_RELEASE_ARTIFACT_SHA256: artifactSha256 } : {}),
+      SOVEREIGN_MAIL_WORKER_NAME: workerNameFromConfig(config)
     },
     d1_databases: config.d1_databases?.map((binding) => ({
       ...binding,
@@ -126,9 +127,9 @@ export function normalizeConfig(config, version, artifactSha256) {
   };
 }
 
-export function hqbaseReleaseTag(version, artifactSha256) {
+export function sovereignMailReleaseTag(version, artifactSha256) {
   if (!/^\d+\.\d+\.\d+/.test(version) || !/^[a-f0-9]{64}$/.test(artifactSha256)) {
-    throw new Error("HQBase release identity is invalid.");
+    throw new Error("Sovereign Mail release identity is invalid.");
   }
-  return `hqbase:${version}:${artifactSha256}`;
+  return `sovereign-mail:${version}:${artifactSha256}`;
 }

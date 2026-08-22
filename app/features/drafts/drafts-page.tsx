@@ -1,12 +1,13 @@
-import { FilePenLine, Paperclip } from "lucide-react";
-import type * as React from "react";
+import { FilePenLine, Paperclip, Trash2 } from "lucide-react";
+import * as React from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/cn";
 import { formatDateTime } from "@/lib/format";
 import { appRoutePath } from "@/lib/routes";
-
+import { DiscardDraftDialog } from "./discard-draft-dialog";
 import type { Draft } from "./types";
 
 type DraftsPageProps = {
@@ -16,6 +17,7 @@ type DraftsPageProps = {
   search: string;
   selectedId: string | null;
   onBack: () => void;
+  onDelete: (draftId: string) => Promise<void>;
   onSelect: (draftId: string) => void;
 };
 
@@ -26,8 +28,10 @@ export function DraftsPage({
   search,
   selectedId,
   onBack,
+  onDelete,
   onSelect
 }: DraftsPageProps): React.ReactElement {
+  const [discardTarget, setDiscardTarget] = React.useState<Draft | null>(null);
   const normalizedSearch = search.trim().toLowerCase();
   const visibleDrafts = drafts.filter((draft) => {
     if (mailboxId !== "all" && draft.mailboxId !== mailboxId) return false;
@@ -72,11 +76,23 @@ export function DraftsPage({
               draft={draft}
               isActive={draft.id === selectedId}
               key={draft.id}
+              onDiscard={() => setDiscardTarget(draft)}
               onSelect={onSelect}
             />
           ))}
         </div>
       )}
+      <DiscardDraftDialog
+        open={discardTarget !== null}
+        onConfirm={async () => {
+          if (!discardTarget) return;
+          await onDelete(discardTarget.id);
+          toast.success("Draft discarded.");
+        }}
+        onOpenChange={(open) => {
+          if (!open) setDiscardTarget(null);
+        }}
+      />
     </section>
   );
 }
@@ -84,10 +100,12 @@ export function DraftsPage({
 function DraftListItem({
   draft,
   isActive,
+  onDiscard,
   onSelect
 }: {
   draft: Draft;
   isActive: boolean;
+  onDiscard: () => void;
   onSelect: (draftId: string) => void;
 }): React.ReactElement {
   const recipients = draft.to.length > 0 ? draft.to.join(", ") : "No recipients";
@@ -95,42 +113,53 @@ function DraftListItem({
   const snippet = draft.text.trim().replace(/\s+/g, " ") || "No message content";
 
   return (
-    <a
-      className={cn(
-        "grid min-h-14 w-full grid-cols-[minmax(8rem,0.7fr)_minmax(0,2fr)_auto] items-center gap-3 border-b border-border/70 px-4 py-2.5 text-left transition-colors hover:bg-muted/55 max-sm:grid-cols-[minmax(0,1fr)_auto]",
-        isActive && "bg-muted/85"
-      )}
-      href={appRoutePath({ kind: "drafts", draftId: draft.id })}
-      onClick={(event) => {
-        if (isModifiedNavigation(event)) return;
-        event.preventDefault();
-        onSelect(draft.id);
-      }}
-    >
-      <div className="min-w-0 truncate text-[13px]">
-        <span className="font-medium text-destructive">Draft</span>
-        <span className="ml-2 text-muted-foreground">{recipients}</span>
-      </div>
-      <div className="flex min-w-0 items-center gap-2 max-sm:col-span-2 max-sm:row-start-2">
-        <span className="shrink-0 truncate text-[13px] font-medium">{subject}</span>
-        <span aria-hidden="true" className="text-muted-foreground">
-          —
-        </span>
-        <span className="truncate text-[12px] text-muted-foreground">{snippet}</span>
-        {draft.attachments.length > 0 ? (
-          <Paperclip
-            aria-label={`${draft.attachments.length} attachment${draft.attachments.length === 1 ? "" : "s"}`}
-            className="size-3.5 shrink-0 text-muted-foreground"
-          />
-        ) : null}
-      </div>
-      <time
-        className="shrink-0 font-mono text-[10px] text-muted-foreground max-sm:col-start-2 max-sm:row-start-1"
-        dateTime={draft.updatedAt}
+    <div className={cn("relative border-b border-border/70", isActive && "bg-muted/85")}>
+      <a
+        className="grid min-h-14 w-full grid-cols-[minmax(8rem,0.7fr)_minmax(0,2fr)_auto] items-center gap-3 py-2.5 pl-4 pr-24 text-left transition-colors hover:bg-muted/55 max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:pr-14"
+        href={appRoutePath({ kind: "drafts", draftId: draft.id })}
+        onClick={(event) => {
+          if (isModifiedNavigation(event)) return;
+          event.preventDefault();
+          onSelect(draft.id);
+        }}
       >
-        {formatDateTime(draft.updatedAt)}
-      </time>
-    </a>
+        <div className="min-w-0 truncate text-[13px]">
+          <span className="font-medium text-destructive">Draft</span>
+          <span className="ml-2 text-muted-foreground">{recipients}</span>
+        </div>
+        <div className="flex min-w-0 items-center gap-2 max-sm:col-span-2 max-sm:row-start-2">
+          <span className="shrink-0 truncate text-[13px] font-medium">{subject}</span>
+          <span aria-hidden="true" className="text-muted-foreground">
+            —
+          </span>
+          <span className="truncate text-[12px] text-muted-foreground">{snippet}</span>
+          {draft.attachments.length > 0 ? (
+            <Paperclip
+              aria-label={`${draft.attachments.length} attachment${draft.attachments.length === 1 ? "" : "s"}`}
+              className="size-3.5 shrink-0 text-muted-foreground"
+            />
+          ) : null}
+        </div>
+        <time
+          className="shrink-0 font-mono text-[10px] text-muted-foreground max-sm:col-start-2 max-sm:row-start-1"
+          dateTime={draft.updatedAt}
+        >
+          {formatDateTime(draft.updatedAt)}
+        </time>
+      </a>
+      <Button
+        aria-label={`Discard draft: ${subject}`}
+        className="absolute right-2 top-1/2 -translate-y-1/2 gap-1.5 text-muted-foreground hover:text-destructive"
+        size="sm"
+        title="Discard draft"
+        type="button"
+        variant="ghost"
+        onClick={onDiscard}
+      >
+        <Trash2 />
+        <span className="max-sm:sr-only">Discard</span>
+      </Button>
+    </div>
   );
 }
 

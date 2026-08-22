@@ -12,7 +12,10 @@ import {
 const discoveryIntervalMs = 15 * 60 * 1000;
 const activeUpdateIntervalMs = 10_000;
 
-export function useUpdateMonitor(canManage: boolean): {
+export function useUpdateMonitor(
+  canManage: boolean,
+  enabled = true
+): {
   acceptStatus: (status: UpdateStatus) => void;
   progress: UpdateProgress | null;
   ready: boolean;
@@ -20,7 +23,9 @@ export function useUpdateMonitor(canManage: boolean): {
   status: UpdateStatus | null;
 } {
   const [status, setStatus] = React.useState<UpdateStatus | null>(null);
-  const [progress, setProgress] = React.useState<UpdateProgress | null>(() => readUpdateProgress());
+  const [progress, setProgress] = React.useState<UpdateProgress | null>(() =>
+    enabled ? readUpdateProgress() : null
+  );
   const [ready, setReady] = React.useState(readPwaUpdateReady);
 
   const acceptStatus = React.useCallback((nextStatus: UpdateStatus) => {
@@ -38,6 +43,12 @@ export function useUpdateMonitor(canManage: boolean): {
   }, []);
 
   React.useEffect(() => {
+    if (!enabled) {
+      clearUpdateProgress();
+      setProgress(null);
+      setStatus(null);
+      return;
+    }
     if (!canManage) {
       setStatus(null);
       return;
@@ -75,7 +86,7 @@ export function useUpdateMonitor(canManage: boolean): {
       window.removeEventListener("focus", checkWhenVisible);
       document.removeEventListener("visibilitychange", checkWhenVisible);
     };
-  }, [acceptStatus, canManage, progress]);
+  }, [acceptStatus, canManage, enabled, progress]);
 
   const start = React.useCallback((buildId: string) => {
     setProgress(beginUpdateProgress(buildId));

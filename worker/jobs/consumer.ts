@@ -1,6 +1,14 @@
 import { nowIso } from "../db/client";
 import type { WorkerEnv } from "../lib/env";
 import { operationalLog } from "../observability/log";
+import {
+  getImapSmtpConnection,
+  markImapSmtpConnectionError,
+  markImapSmtpConnectionSynced
+} from "../providers/connections";
+import { ProviderError } from "../providers/errors";
+import { executeImapConnectionSync } from "../providers/imap/executor";
+import { providerId } from "../providers/types";
 import { isJob, type Job } from "./types";
 
 const batchSize = 100;
@@ -8,10 +16,14 @@ const batchSize = 100;
 async function deleteExpiredRows(env: WorkerEnv): Promise<Record<string, number>> {
   const nowSeconds = Math.floor(Date.now() / 1000);
   const results = await env.DB.batch([
-    env.DB.prepare("DELETE FROM rate_limits WHERE expires_at < ?").bind(nowSeconds)
+    env.DB.prepare("DELETE FROM rate_limits WHERE expires_at < ?").bind(nowSeconds),
+    env.DB.prepare(
+      "DELETE FROM operation_runs WHERE finished_at IS NOT NULL AND finished_at < datetime('now', '-30 days')"
+    )
   ]);
   return {
-    rateLimits: results[0]?.meta.changes ?? 0
+    rateLimits: results[0]?.meta.changes ?? 0,
+    operationRuns: results[1]?.meta.changes ?? 0
   };
 }
 
@@ -85,18 +97,9 @@ async function integrityCounters(env: WorkerEnv): Promise<Record<string, number>
 
 export async function processJob(env: WorkerEnv, job: Job): Promise<void> {
   const startedAt = nowIso();
-  const inserted = await env.DB.prepare(
-    `INSERT OR IGNORE INTO operation_runs
-     (id, kind, status, counters_json, started_at) VALUES (?, ?, 'running', '{}', ?)`
-  )
-    .bind(job.id, job.kind, startedAt)
-    .run();
-  if ((inserted.meta.changes ?? 0) === 0) return;
+  if (!(await claimJobRun(env.DB, job, startedAt))) return;
   try {
-    const counters =
-      job.kind === "maintenance"
-        ? { ...(await deleteExpiredRows(env)), retainedMessages: await applyRetention(env) }
-        : await integrityCounters(env);
+    const counters = await jobCounters(env, job);
     await env.DB.prepare(
       `UPDATE operation_runs SET status = 'succeeded', counters_json = ?, finished_at = ?
        WHERE id = ?`
@@ -105,6 +108,13 @@ export async function processJob(env: WorkerEnv, job: Job): Promise<void> {
       .run();
     operationalLog("info", "job_succeeded", { jobId: job.id, kind: job.kind });
   } catch (error) {
+    if (job.kind === "provider-sync") {
+      await markImapSmtpConnectionError(
+        env.DB,
+        providerId(job.providerId),
+        error instanceof ProviderError ? error.code : "PROVIDER_SYNC_FAILED"
+      ).catch(() => undefined);
+    }
     await env.DB.prepare(
       `UPDATE operation_runs SET status = 'failed', error_code = ?, finished_at = ? WHERE id = ?`
     )
@@ -113,6 +123,42 @@ export async function processJob(env: WorkerEnv, job: Job): Promise<void> {
     operationalLog("error", "job_failed", { jobId: job.id, kind: job.kind });
     throw error;
   }
+}
+
+export async function claimJobRun(db: D1Database, job: Job, startedAt: string): Promise<boolean> {
+  const claimed = await db
+    .prepare(
+      `INSERT INTO operation_runs
+     (id, kind, status, counters_json, started_at) VALUES (?, ?, 'running', '{}', ?)
+     ON CONFLICT(id) DO UPDATE SET
+       status = 'running', counters_json = '{}', error_code = NULL,
+       started_at = excluded.started_at, finished_at = NULL
+     WHERE operation_runs.status = 'failed'`
+    )
+    .bind(job.id, job.kind, startedAt)
+    .run();
+  return (claimed.meta.changes ?? 0) > 0;
+}
+
+async function jobCounters(env: WorkerEnv, job: Job): Promise<Record<string, number>> {
+  if (job.kind === "maintenance") {
+    return { ...(await deleteExpiredRows(env)), retainedMessages: await applyRetention(env) };
+  }
+  if (job.kind === "integrity-scan") return integrityCounters(env);
+  const owner = providerId(job.providerId);
+  const connection = await getImapSmtpConnection(env.DB, owner);
+  if (!connection.isEnabled || !connection.verifiedAt || !connection.mailboxAddress) {
+    throw new ProviderError("PROVIDER_UNAVAILABLE", owner);
+  }
+  const result = await executeImapConnectionSync(env, owner);
+  await markImapSmtpConnectionSynced(env.DB, owner);
+  return {
+    folders: result.folders,
+    fetched: result.fetched,
+    inserted: result.inserted,
+    duplicates: result.duplicates,
+    hasMore: result.hasMore ? 1 : 0
+  };
 }
 
 export async function consumeJobs(batch: MessageBatch<Job>, env: WorkerEnv): Promise<void> {

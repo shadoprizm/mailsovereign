@@ -1,6 +1,8 @@
 import {
   bootstrapSetupSchema,
   configureCloudflareDomainSchema,
+  createCloudflareZoneSchema,
+  listCloudflareAccountsSchema,
   listCloudflareZonesSchema
 } from "@worker/features/setup/validation";
 import { describe, expect, it } from "vitest";
@@ -59,7 +61,9 @@ describe("setup API validation", () => {
         defaultFromMailboxAddress: "hello@example.com",
         mailboxes: [{ address: "hello@example.com", displayName: "Hello" }]
       })
-    ).toThrow("Use an email account you can always access, even when HQBase is unavailable.");
+    ).toThrow(
+      "Use an email account you can always access, even when Sovereign Mail is unavailable."
+    );
   });
 
   it("rejects duplicate bootstrap mailboxes", () => {
@@ -98,18 +102,35 @@ describe("setup API validation", () => {
     expect(listCloudflareZonesSchema.parse({})).toEqual({});
   });
 
-  it("defaults Cloudflare Email Sending automation on", () => {
+  it("normalizes valid zone creation and rejects credentials or invalid domains", () => {
+    expect(
+      createCloudflareZoneSchema.parse({ accountId: "account-1", name: " Example.COM " })
+    ).toEqual({ accountId: "account-1", name: "example.com" });
+    expect(() =>
+      createCloudflareZoneSchema.parse({
+        accountId: "account-1",
+        apiToken: "secret",
+        name: "example.com"
+      })
+    ).toThrow();
+    expect(() =>
+      createCloudflareZoneSchema.parse({ accountId: "account-1", name: "bad domain" })
+    ).toThrow();
+    expect(() => listCloudflareAccountsSchema.parse({ apiToken: "secret" })).toThrow();
+  });
+
+  it("defaults Cloudflare Email Sending automation on for direct delivery", () => {
     expect(
       configureCloudflareDomainSchema.parse({
-        appHostname: "hqbase.example.com",
-        workerName: "hqbase",
+        appHostname: "sovereign-mail.example.com",
+        workerName: "sovereign-mail",
         zoneId: "zone-1"
       })
     ).toEqual({
-      appHostname: "hqbase.example.com",
+      appHostname: "sovereign-mail.example.com",
       attachCustomDomain: true,
       enableSending: true,
-      workerName: "hqbase",
+      workerName: "sovereign-mail",
       zoneId: "zone-1"
     });
   });
@@ -117,16 +138,16 @@ describe("setup API validation", () => {
   it("requires the app custom domain only when attaching it", () => {
     expect(() =>
       configureCloudflareDomainSchema.parse({
-        workerName: "hqbase",
+        workerName: "sovereign-mail",
         zoneId: "zone-1"
       })
     ).toThrow();
 
     expect(
       configureCloudflareDomainSchema.parse({
-        appHostname: "hqbase.example.com",
+        appHostname: "sovereign-mail.example.com",
         attachCustomDomain: false,
-        workerName: "hqbase",
+        workerName: "sovereign-mail",
         zoneId: "zone-1"
       })
     ).toMatchObject({ attachCustomDomain: false });

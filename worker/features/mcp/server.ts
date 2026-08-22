@@ -13,7 +13,7 @@ export async function serveMcp(
   _ctx: ExecutionContext,
   principal: McpPrincipal
 ): Promise<Response> {
-  const server = new McpServer({ name: "HQBase", version: "1.0.0" });
+  const server = new McpServer({ name: "Sovereign Mail", version: "1.0.0" });
   registerTools(server, env, principal);
   const url = new URL(request.url);
   const transport = new WebStandardStreamableHTTPServerTransport({

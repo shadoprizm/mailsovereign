@@ -33,6 +33,7 @@ import {
 import { createThread, touchThread } from "@worker/features/messages/threading";
 import { replyToMessage, sendNewMessage } from "@worker/features/send/service";
 import type { WorkerEnv } from "@worker/lib/env";
+import { ProviderError } from "@worker/providers/errors";
 
 const mailbox = {
   addresses: [],
@@ -70,15 +71,20 @@ describe("send service", () => {
     ASSETS: {} as Fetcher,
     BETTER_AUTH_SECRET: "test-secret",
     CLOUDFLARE_OAUTH_CLIENT_ID: "1c413f324b518b452096929b847e6703",
-    DB: {} as D1Database,
-    HQBASE_APP_VERSION: "0.1.3",
-    HQBASE_RELEASE_PUBLIC_KEY: "MCowBQYDK2VwAyEAsVwKniCvpHDwbbnjTPP0SuIIG97cRL+iFBQvay9OrU4=",
-    HQBASE_RELEASE_MANIFEST_URL:
-      "https://github.com/HQBase/hqbase/releases/latest/download/stable.json",
-    HQBASE_WORKER_NAME: "hqbase",
+    DB: {
+      prepare: vi.fn(() => ({
+        bind: vi.fn(() => ({ first: vi.fn().mockResolvedValue(null) }))
+      }))
+    } as unknown as D1Database,
+    SOVEREIGN_MAIL_APP_VERSION: "0.1.3",
+    SOVEREIGN_MAIL_RELEASE_PUBLIC_KEY:
+      "MCowBQYDK2VwAyEAsVwKniCvpHDwbbnjTPP0SuIIG97cRL+iFBQvay9OrU4=",
+    SOVEREIGN_MAIL_RELEASE_MANIFEST_URL:
+      "https://github.com/shadoprizm/mailsovereign/releases/latest/download/stable.json",
+    SOVEREIGN_MAIL_WORKER_NAME: "sovereign-mail",
     MAIL_OBJECTS: { get, put } as unknown as R2Bucket,
     MAIL_SENDER: { send } as unknown as SendEmail,
-    HQBASE_JOBS: {} as Queue
+    SOVEREIGN_MAIL_JOBS: {} as Queue
   } satisfies WorkerEnv;
 
   beforeEach(() => {
@@ -251,5 +257,85 @@ describe("send service", () => {
         r2Key: "mail/logo.png"
       })
     );
+  });
+
+  it("never invokes the provider transport for a disabled mailbox", async () => {
+    vi.mocked(findMailboxForSending).mockResolvedValue({ ...mailbox, isActive: false });
+
+    await expect(
+      sendNewMessage(env, {
+        attachmentIds: [],
+        bcc: [],
+        cc: [],
+        from: mailbox.address,
+        subject: "Hello",
+        text: "Hello",
+        to: ["owner@example.com"]
+      })
+    ).rejects.toMatchObject({ code: "MAILBOX_DISABLED" });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(insertMessage).not.toHaveBeenCalled();
+  });
+
+  it("never invokes the provider transport when replying from a disabled mailbox", async () => {
+    vi.mocked(findMailboxForSending).mockResolvedValue({ ...mailbox, isActive: false });
+
+    await expect(
+      replyToMessage(env, {
+        attachmentIds: [],
+        bcc: [],
+        cc: [],
+        from: mailbox.address,
+        messageId: "message-1",
+        text: "Reply",
+        to: ["owner@example.com"]
+      })
+    ).rejects.toMatchObject({ code: "MAILBOX_DISABLED" });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(insertMessage).not.toHaveBeenCalled();
+  });
+
+  it("surfaces provider failures as structured provider errors without leaking payloads", async () => {
+    send.mockRejectedValue(new Error("cloudflare upstream: apikey=sk-secret-999"));
+
+    try {
+      await sendNewMessage(env, {
+        attachmentIds: [],
+        bcc: [],
+        cc: [],
+        from: mailbox.address,
+        subject: "Hello",
+        text: "Hello",
+        to: ["owner@example.com"]
+      });
+      expect.unreachable();
+    } catch (error) {
+      const providerError = error as ProviderError;
+      expect(providerError).toBeInstanceOf(ProviderError);
+      expect(providerError.code).toBe("PROVIDER_SEND_REJECTED");
+      expect(providerError.message).not.toContain("sk-secret-999");
+      expect(providerError.stack ?? "").not.toContain("sk-secret-999");
+    }
+    expect(insertMessage).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the provider returns a malformed send result", async () => {
+    send.mockResolvedValue({});
+
+    await expect(
+      sendNewMessage(env, {
+        attachmentIds: [],
+        bcc: [],
+        cc: [],
+        from: mailbox.address,
+        subject: "Hello",
+        text: "Hello",
+        to: ["owner@example.com"]
+      })
+    ).rejects.toMatchObject({ code: "PROVIDER_MALFORMED_RESPONSE" });
+
+    expect(insertMessage).not.toHaveBeenCalled();
   });
 });

@@ -1,13 +1,23 @@
+import { fileURLToPath } from "node:url";
+
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   resolve: {
     alias: {
-      "@": new URL("./app", import.meta.url).pathname,
-      "@worker": new URL("./worker", import.meta.url).pathname
+      "@": fileURLToPath(new URL("./app", import.meta.url)),
+      "@worker": fileURLToPath(new URL("./worker", import.meta.url)),
+      "cloudflare:sockets": fileURLToPath(
+        new URL("./test/unit/cloudflare-sockets-stub.ts", import.meta.url)
+      )
     }
   },
   test: {
+    server: {
+      deps: {
+        inline: ["cf-imap", "worker-mailer"]
+      }
+    },
     include: ["test/unit/**/*.test.{ts,tsx,mjs}", "test/migrations/**/*.test.ts"],
     coverage: {
       provider: "v8",

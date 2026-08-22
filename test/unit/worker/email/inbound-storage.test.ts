@@ -43,4 +43,15 @@ describe("planInboundStorage", () => {
     expect(plan.mailboxId).toBeNull();
     expect(plan.dedupeKey).toBeNull();
   });
+
+  it("prefers a provider-scoped dedupe key for messages without a Message-ID", () => {
+    const plan = planInboundStorage({
+      envelopeRecipient: "support@example.com",
+      mailboxId: "mbx_1",
+      parsed: { ...parsed, messageId: null },
+      dedupeKeyOverride: "imap:mxroute-primary:7:5:INBOX:42"
+    });
+
+    expect(plan.dedupeKey).toBe("imap:mxroute-primary:7:5:INBOX:42");
+  });
 });

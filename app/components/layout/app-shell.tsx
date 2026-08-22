@@ -100,7 +100,7 @@ export function AppShell(props: AppShellProps): React.ReactElement {
     <div className="relative flex h-screen h-[100dvh] touch-manipulation overflow-hidden bg-background pt-[env(safe-area-inset-top)] text-foreground">
       {desktopShell ? (
         <ResizablePanelGroup
-          id="hqbase-desktop-shell"
+          id="sovereign-mail-desktop-shell"
           onLayoutChanged={() => {
             const size = sidebarPanelRef.current?.getSize();
             if (!size) return;
@@ -238,7 +238,7 @@ function DesktopWindowGuard(): React.ReactElement {
           <AppWindow className="size-4" />
         </div>
         <div className="flex flex-col gap-1.5">
-          <h1 className="text-sm font-medium">Make the HQBase window a little larger</h1>
+          <h1 className="text-sm font-medium">Make the Sovereign Mail window a little larger</h1>
           <p className="text-xs leading-5 text-muted-foreground">
             The desktop workspace needs at least {desktopMinimumWidth} × {desktopMinimumHeight}{" "}
             pixels to keep navigation, conversations, and the reader together.

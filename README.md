@@ -1,13 +1,42 @@
-# HQBase
+# Sovereign Mail
 
-Your team’s email workspace. On your infrastructure.
+Sovereign Mail is a self-hosted, multi-domain email workspace and governed agent email harness.
+It runs in infrastructure you control and keeps mail and Cloudflare credentials there.
 
-HQBase is an AGPL-licensed shared email workspace that runs in your Cloudflare account. It provides
-shared mailboxes, team access controls, multi-domain setup, drafts, audit history, operations, and
-an OAuth-protected remote MCP server while keeping mail and Cloudflare credentials in customer
-infrastructure.
+The public source, installer, documentation, and signed release channel are maintained in this
+repository. Sovereign Mail does not use HQBase OAuth, releases, signing keys, or hosted services.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2FHQBase%2Fhqbase)
+## What users get
+
+- A responsive web and installable PWA inbox for personal and shared mailboxes.
+- Multi-domain mailboxes, aliases, drafts, contacts, signatures, operations, and audit history.
+- Cloudflare Email Routing and Email Sending integration.
+- Connected IMAP/SMTP providers for accounts hosted elsewhere.
+- Explicitly governed AI actions, with customer-controlled credentials and infrastructure.
+- Backup, restore, diagnostics, and signed updates from the Sovereign Mail release channel.
+
+## Install on Cloudflare
+
+Prerequisites and the production installation flow are documented in
+[docs/INSTALLATION.md](docs/INSTALLATION.md). Each installation needs its own Cloudflare OAuth
+client; there is no shared upstream relay or client identity.
+
+The short form is:
+
+```sh
+git clone https://github.com/shadoprizm/mailsovereign.git
+cd mailsovereign
+pnpm install
+pnpm sovereign-mail:install -- \
+  --name production \
+  --auth-url https://mail.example.com \
+  --app-domain mail.example.com \
+  --oauth-client-id YOUR_CLOUDFLARE_OAUTH_CLIENT_ID
+```
+
+The installer records every resource it owns in
+`.sovereign-mail/deployments/production/manifest.json`. Review the manifest before allowing a
+reset or destroy operation.
 
 ## Local development
 
@@ -18,10 +47,10 @@ pnpm db:seed:local
 pnpm dev
 ```
 
-Set `BETTER_AUTH_SECRET` and a local-only `HQBASE_LOCAL_SEED_PASSWORD` of 8 to 128 characters in
-`.dev.vars` before running the optional seed command. It writes only to local D1 and does not contact
-Cloudflare OAuth. Open `http://localhost:8787/` and sign in as `owner@hqbase.test` with that
-password.
+Set `BETTER_AUTH_SECRET` and a local-only `SOVEREIGN_MAIL_LOCAL_SEED_PASSWORD` of 8 to 128
+characters in `.dev.vars` before running the optional seed command. It writes only to local D1 and
+does not contact Cloudflare OAuth. Open `http://localhost:8787/` and sign in as
+`owner@sovereign-mail.test` with that password.
 
 To discard all local D1 data, rebuild the schema, and recreate the demo workspace:
 
@@ -30,8 +59,8 @@ pnpm db:reset:local
 pnpm db:seed:local
 ```
 
-The reset command is destructive and local-only. To exercise first-run setup instead, omit the seed
-command and open `http://localhost:8787/setup`.
+The reset command is destructive and local-only. To exercise first-run setup instead, omit the
+seed command and open `http://localhost:8787/setup`.
 
 For presentation-only onboarding work:
 
@@ -52,15 +81,15 @@ Run `pnpm cf:typegen` after changing `wrangler.jsonc`.
 
 ## Documentation
 
-[hqbase.io/docs](https://hqbase.io/docs/) is the single public home for user and operator guides,
-canonical product specifications, and maintainer procedures.
+- [Production installation](docs/INSTALLATION.md)
+- [Signed releases and updates](docs/UPDATES.md)
+- [IMAP/SMTP operator notes](docs/IMAP_SMTP_CONNECTIONS.md)
+- [Mail deletion and drafts](docs/MAIL_LIFECYCLE.md)
+- [Product direction](VISION.md)
+- [Security policy](SECURITY.md)
 
-Pushes to `main` run the full quality gate and deployment dry-run. Deployed staging is manual and
-also runs inside the signed release workflow. A release stays draft while the previous stable
-version is upgraded to the exact signed candidate; only a passing candidate becomes public.
-Customer installations and updates verify the signed manifest and artifact digest before
-deployment.
+## Independence and license
 
-## License
-
-HQBase is licensed under AGPL-3.0-only. See `LICENSE`.
+Sovereign Mail is an independent fork of [HQBase](https://github.com/HQBase/hqbase). It is not
+affiliated with or endorsed by HQBase. Upstream provenance is recorded in [NOTICE.md](NOTICE.md).
+The source is licensed under AGPL-3.0-only; see [LICENSE](LICENSE).

@@ -30,7 +30,7 @@ describe("PWA lifecycle", () => {
     const view = await renderComponent(<PwaLifecycle />);
     await flushHookEffects(() => mocks.onUpdateReady?.({ activate }));
 
-    expect(view.container.textContent).toContain("A new version of HQBase is ready.");
+    expect(view.container.textContent).toContain("A new version of Sovereign Mail is ready.");
     expect(view.container.textContent).toContain("Reload");
     expect(mocks.playNotificationSound).toHaveBeenCalledOnce();
     expect(mocks.playNotificationSound).toHaveBeenCalledWith("update-ready");

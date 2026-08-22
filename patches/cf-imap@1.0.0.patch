@@ -1,0 +1,101 @@
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 6e6c2de81eef48eb06557723c1f659a162b4bc51..0bafc0abd110054d8998facc21bd813ba3b13fdb 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts	
+@@ -145,6 +145,19 @@ export declare class CFImap {
+      * @param {boolean} [props.fetchBody=true] - If true (default), the full message is fetched and parsed
+      */
+     fetchEmails: ({ folder, limit, fetchBody, byteLimit, peek, useUid }: FetchEmailsProps) => Promise<Email[]>;
++    /**
++     * Fetches one complete raw message as bytes without UTF-8 decoding.
++     * The mailbox must already be selected. The server's RFC822.SIZE is
++     * returned so callers can reject a partial response caused by byteLimit.
++     */
++    fetchRawMessage: (options: {
++        uid: number;
++        byteLimit: number;
++    }) => Promise<{
++        uid: number;
++        size: number;
++        raw: Uint8Array;
++    }>;
+     /**
+      * Searches emails based on the props given. Returns sequence numbers
+      * (or UIDs with useUid: true).
+diff --git a/dist/index.js b/dist/index.js
+index 7753c3acd3a875ffbd723b59a7d7ce1f4f47f800..88f0352f09c19f93bf72a13b11951abd2f0e352f 100644
+--- a/dist/index.js
++++ b/dist/index.js	
+@@ -1,9 +1,9 @@
+ import { connect } from "cloudflare:sockets";
+-import { ImapStream, ImapError } from "./utils/imapStream";
+-import { parseImapList, quote, formatInternalDate, splitResponseCodes, parseInternalDate, encodeMutf7, decodeMutf7 } from "./utils/imapList";
+-import { bytesToBase64 } from "./utils/decodeMime";
+-import { parseHeaders, parseAddresses, parseMime, extractContent } from "./utils/mime";
+-import { buildSearchQuery } from "./utils/search";
++import { ImapStream, ImapError } from "./utils/imapStream.js";
++import { parseImapList, quote, formatInternalDate, splitResponseCodes, parseInternalDate, encodeMutf7, decodeMutf7 } from "./utils/imapList.js";
++import { bytesToBase64 } from "./utils/decodeMime.js";
++import { parseHeaders, parseAddresses, parseMime, extractContent } from "./utils/mime.js";
++import { buildSearchQuery } from "./utils/search.js";
+ export { ImapError };
+ const CAP_RE = /\[CAPABILITY ([^\]]*)\]/;
+ function parseCapabilities(line) {
+@@ -695,6 +695,37 @@ export class CFImap {
+             return emails;
+         });
+     };
++    /**
++     * Fetches one complete raw message as bytes without UTF-8 decoding.
++     * The mailbox must already be selected. The server's RFC822.SIZE is
++     * returned so callers can reject a partial response caused by byteLimit.
++     */
++    fetchRawMessage = async ({ uid, byteLimit }) => {
++        return this.command(async () => {
++            this.requireConnection();
++            this.requireFolder();
++            const tag = this.nextTag();
++            await this.send(tag, `UID FETCH ${uid} (UID RFC822.SIZE BODY.PEEK[]<0.${byteLimit}>)`);
++            const { items } = await this.stream.readUntilTag(tag);
++            const response = items.map(item => item.line).join(" ");
++            const literal = items.find(item => item.literal !== null)?.literal;
++            const uidMatch = /(?:^|[\s(])UID (\d+)(?:\s|\)|$)/.exec(response);
++            const sizeMatch = /(?:^|[\s(])RFC822\.SIZE (\d+)(?:\s|\)|$)/.exec(response);
++            if (literal === undefined)
++                throw new ImapError("BAD", tag, "Raw message literal missing", []);
++            if (!uidMatch)
++                throw new ImapError("BAD", tag, "Raw message UID missing", []);
++            if (!sizeMatch)
++                throw new ImapError("BAD", tag, "Raw message size missing", []);
++            if (parseInt(uidMatch[1]) !== uid)
++                throw new ImapError("BAD", tag, "Raw message UID mismatch", []);
++            return {
++                uid,
++                size: parseInt(sizeMatch[1]),
++                raw: literal
++            };
++        });
++    };
+     /**
+      * Searches emails based on the props given. Returns sequence numbers
+      * (or UIDs with useUid: true).
+diff --git a/dist/utils/mime.js b/dist/utils/mime.js
+index e8cc7b95693b9def779821ebf244bb89f665b4a8..1b198781cfce593d709225b0cc33ed783a2f5abd 100644
+--- a/dist/utils/mime.js
++++ b/dist/utils/mime.js	
+@@ -1,4 +1,4 @@
+-import { base64ToBytes, bytesToBase64, decodeBytes, decodeMimeEncodedWords, decodeQuotedPrintable } from "./decodeMime";
++import { base64ToBytes, bytesToBase64, decodeBytes, decodeMimeEncodedWords, decodeQuotedPrintable } from "./decodeMime.js";
+ /** Splits raw header section into an unfolded, MIME-word-decoded map (lowercased names). */
+ export function parseHeaders(raw) {
+     const headers = {};
+diff --git a/dist/utils/search.js b/dist/utils/search.js
+index db4d06a4c2aa5b22ca0897b76f1392fef1d40fe9..913cb71f01529280286d1aa94d63551a7da32c5a 100644
+--- a/dist/utils/search.js
++++ b/dist/utils/search.js	
+@@ -1,4 +1,4 @@
+-import { formatImapDate, quote, quoteIfNeeded } from "./imapList";
++import { formatImapDate, quote, quoteIfNeeded } from "./imapList.js";
+ const FLAG_KEYS = {
+     answered: "ANSWERED",
+     deleted: "DELETED",

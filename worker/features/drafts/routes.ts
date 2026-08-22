@@ -4,6 +4,7 @@ import type { HonoApp } from "../../lib/env";
 import { AppError } from "../../lib/errors";
 import { readJson } from "../../lib/json";
 import { parseWith } from "../../lib/validation";
+import { recordAudit } from "../audit/service";
 import {
   addDraftAttachment,
   deleteDraft,
@@ -41,6 +42,15 @@ draftRoutes.delete("/:id", async (c) => {
   const auth = await requireAuthContext(c.env, c.req.raw);
   if (!(await deleteDraft(c.env.DB, c.env.MAIL_OBJECTS, auth.user.id, c.req.param("id"))))
     throw new AppError("DRAFT_NOT_FOUND", "Draft not found.", 404);
+  await recordAudit(c.env.DB, {
+    correlationId: c.get("correlationId"),
+    actorType: "user",
+    actorId: auth.user.id,
+    action: "draft.delete",
+    resourceType: "draft",
+    resourceId: c.req.param("id"),
+    outcome: "success"
+  });
   return c.body(null, 204);
 });
 draftRoutes.post("/:id/attachments", async (c) => {

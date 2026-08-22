@@ -23,11 +23,33 @@ export const updateMailDomainSchema = z
     path: ["catchAllMailboxId"]
   });
 
+export const removeMailDomainSchema = z
+  .object({
+    confirmation: z.string().min(1).max(253)
+  })
+  .strict();
+
 export const provisionMailDomainSchema = z.object({
   name: domainSchema,
   zoneId: z.string().trim().min(1).max(64),
   workerName: z.string().trim().min(1).max(63).optional(),
   enableSending: z.boolean().default(true)
+});
+
+export const createCloudflareZoneSchema = z
+  .object({
+    accountId: z.string().trim().min(1).max(64),
+    name: domainSchema
+  })
+  .strict();
+
+export const cloudflareZoneStatusSchema = z.object({
+  zoneId: z
+    .string()
+    .trim()
+    .min(1)
+    .max(64)
+    .regex(/^[a-zA-Z0-9_-]+$/)
 });
 
 export const changePortalHostnameSchema = z.object({

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { reauthenticateUser } from "../../auth/reauthenticate";
-import { isRecentSession, requireAuthContext } from "../../auth/session";
+import { isRecentSessionForEnvironment, requireAuthContext } from "../../auth/session";
 import type { HonoApp } from "../../lib/env";
 import { AppError } from "../../lib/errors";
 import { readJson } from "../../lib/json";
@@ -13,7 +13,7 @@ const reauthenticationSchema = z.object({ password: z.string().min(1).max(128) }
 
 sessionControlRoutes.get("/recent-authentication", async (c) => {
   const auth = await requireAuthContext(c.env, c.req.raw);
-  return c.json({ recent: isRecentSession(auth) });
+  return c.json({ recent: isRecentSessionForEnvironment(auth, c.env) });
 });
 
 sessionControlRoutes.post("/reauthenticate", async (c) => {

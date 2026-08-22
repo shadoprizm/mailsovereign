@@ -1,12 +1,12 @@
 {
-  "name": "hqbase",
-  "version": "1.0.1",
+  "name": "sovereign-mail",
+  "version": "1.1.0",
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
   "packageManager": "pnpm@11.7.0",
-  "hqbaseRelease": {
-    "minimumVersion": "1.0.0"
+  "sovereignMailRelease": {
+    "minimumVersion": "1.0.1"
   },
   "scripts": {
     "dev": "pnpm build && wrangler dev --port 8787",
@@ -14,7 +14,7 @@
     "dev:setup-ui": "vite --host 127.0.0.1 --port 5173 --open /__ui/setup?state=loading",
     "build": "vite build && node scripts/build-pwa.mjs && node scripts/check-setup-preview-boundary.mjs",
     "deploy": "node scripts/release/deploy.mjs",
-    "db:reset:local": "wrangler d1 execute DB --local --yes --file scripts/hqbase/reset-d1.sql && wrangler d1 migrations apply DB --local",
+    "db:reset:local": "wrangler d1 execute DB --local --yes --file scripts/sovereign-mail/reset-d1.sql && wrangler d1 migrations apply DB --local",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
     "db:seed:local": "node scripts/seed-local.mjs",
@@ -35,28 +35,30 @@
     "pwa:icons": "node scripts/generate-pwa-icons.mjs",
     "check": "pnpm code:check && pnpm typecheck && pnpm test && pnpm test:coverage && pnpm test:architecture && pnpm build",
     "deploy:dry-run": "pnpm build && wrangler deploy --dry-run",
-    "hqbase": "node scripts/hqbase/cli.mjs",
-    "hqbase:button": "node scripts/hqbase/cli.mjs button",
-    "hqbase:install": "node scripts/hqbase/cli.mjs install",
-    "hqbase:doctor": "node scripts/hqbase/cli.mjs doctor",
-    "hqbase:reset": "node scripts/hqbase/cli.mjs reset",
-    "hqbase:destroy": "node scripts/hqbase/cli.mjs destroy",
+    "sovereign-mail": "node scripts/sovereign-mail/cli.mjs",
+    "sovereign-mail:install": "node scripts/sovereign-mail/cli.mjs install",
+    "sovereign-mail:doctor": "node scripts/sovereign-mail/cli.mjs doctor",
+    "sovereign-mail:reset": "node scripts/sovereign-mail/cli.mjs reset",
+    "sovereign-mail:destroy": "node scripts/sovereign-mail/cli.mjs destroy",
     "cf:typegen": "wrangler types",
     "release:package": "node scripts/release/package.mjs"
   },
   "cloudflare": {
     "bindings": {
       "DB": {
-        "description": "Create a new D1 database for this HQBase workspace."
+        "description": "Create a new D1 database for this Sovereign Mail workspace."
       },
       "MAIL_OBJECTS": {
-        "description": "Create a new R2 bucket for this HQBase workspace."
+        "description": "Create a new R2 bucket for this Sovereign Mail workspace."
       },
-      "HQBASE_JOBS": {
+      "SOVEREIGN_MAIL_JOBS": {
         "description": "Queue used for bounded maintenance and integrity jobs with a dead-letter queue."
       },
       "MAIL_SENDER": {
         "description": "Cloudflare Email Sending binding. The sending domain must be onboarded in Cloudflare Email Service."
+      },
+      "AI": {
+        "description": "Cloudflare Workers AI binding for explicit, transient in-product model actions."
       },
       "ASSETS": {
         "description": "Worker Static Assets binding serving the Vite build output from `dist`."
@@ -65,7 +67,7 @@
   },
   "dependencies": {
     "@better-auth/oauth-provider": "1.7.0-rc.2",
-    "@modelcontextprotocol/sdk": "1.29.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@radix-ui/react-accordion": "^1.2.16",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-checkbox": "^1.3.7",
@@ -78,14 +80,16 @@
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tabs": "^1.1.12",
     "@radix-ui/react-tooltip": "^1.2.7",
+    "@tiptap/core": "^3.27.3",
     "@tiptap/extension-link": "^3.27.3",
     "@tiptap/extension-placeholder": "^3.27.3",
     "@tiptap/react": "^3.27.3",
     "@tiptap/starter-kit": "^3.27.3",
     "better-auth": "1.7.0-rc.2",
+    "cf-imap": "1.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "hono": "^4.8.5",
+    "hono": "^4.13.2",
     "lucide-react": "^0.525.0",
     "postal-mime": "^2.5.2",
     "react": "^19.1.0",
@@ -95,11 +99,12 @@
     "sonner": "^2.0.6",
     "tailwind-merge": "^3.3.1",
     "web-push": "^3.6.7",
+    "worker-mailer": "1.2.1",
     "zod": "^4.0.5"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.3",
-    "@cloudflare/vitest-pool-workers": "0.18.8",
+    "@cloudflare/vitest-pool-workers": "0.21.3",
     "@playwright/test": "1.61.1",
     "@types/node": "^26.0.1",
     "@types/react": "^19.1.8",
@@ -110,11 +115,11 @@
     "@vitest/coverage-v8": "4.1.10",
     "autoprefixer": "^10.4.21",
     "cross-spawn": "7.0.6",
-    "postcss": "^8.5.23",
+    "postcss": "8.5.26",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3",
     "vite": "^7.0.5",
     "vitest": "^4.1.10",
-    "wrangler": "^4.114.0"
+    "wrangler": "^4.123.0"
   }
 }

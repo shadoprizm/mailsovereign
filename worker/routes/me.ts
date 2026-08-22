@@ -2,8 +2,9 @@ import { Hono } from "hono";
 import { z } from "zod";
 
 import { completePasswordSetup, isPasswordSetupRequired } from "../auth/password-setup";
-import { requireAuthContext } from "../auth/session";
+import { requireAuthContext, requireRecentSessionForEnvironment } from "../auth/session";
 import { changeCurrentUserPassword } from "../auth/user-actions";
+import { deletePersonalAccount } from "../features/accounts/service";
 import { recordAudit } from "../features/audit/service";
 import { getDefaultFromMailboxId } from "../features/preferences/queries";
 import { updateDefaultFromMailbox } from "../features/preferences/service";
@@ -17,6 +18,7 @@ export const meRoutes = new Hono<HonoApp>();
 const updateMeSchema = z.object({
   defaultFromMailboxId: z.string().min(1).max(100)
 });
+const deleteMeSchema = z.object({ confirmation: z.literal("DELETE MY ACCOUNT") });
 
 meRoutes.get("/", async (c) => {
   const authContext = await requireAuthContext(c.env, c.req.raw, {
@@ -69,4 +71,16 @@ meRoutes.patch("/", async (c) => {
     ...authContext.user,
     defaultFromMailboxId: input.defaultFromMailboxId
   });
+});
+
+meRoutes.delete("/", async (c) => {
+  const authContext = await requireAuthContext(c.env, c.req.raw);
+  requireRecentSessionForEnvironment(authContext, c.env);
+  parseWith(deleteMeSchema, await readJson(c.req.raw));
+  await deletePersonalAccount(c.env, {
+    userId: authContext.user.id,
+    role: authContext.user.role,
+    correlationId: c.get("correlationId")
+  });
+  return c.body(null, 204);
 });

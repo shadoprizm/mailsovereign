@@ -143,6 +143,8 @@ describe("forward service", () => {
       mailboxId: mailbox.id,
       replyToMessageId: null,
       forwardOfMessageId: original.id,
+      signatureMode: "none",
+      signatureId: null,
       from: mailbox.address,
       to: ["recipient@example.com"],
       cc: [],

@@ -14,7 +14,7 @@ export function createAuth(env: WorkerEnv, request: Request) {
   const baseURL = authOrigin(env, request);
 
   return betterAuth({
-    appName: "HQBase",
+    appName: "Sovereign Mail",
     basePath: "/api/auth",
     baseURL,
     database: env.DB,
@@ -69,9 +69,9 @@ export function createAuth(env: WorkerEnv, request: Request) {
         grantTypes: ["authorization_code", "refresh_token"],
         loginPage: "/",
         prefix: {
-          clientSecret: "hqb_client_",
-          opaqueAccessToken: "hqb_access_",
-          refreshToken: "hqb_refresh_"
+          clientSecret: "sovereign_mail_client_",
+          opaqueAccessToken: "sovereign_mail_access_",
+          refreshToken: "sovereign_mail_refresh_"
         },
         scopes: ["mail:read", "mail:write", "mail:send", "offline_access"],
         storeTokens: { hash: hashOAuthToken },

@@ -14,7 +14,7 @@ import loginEmailDomainMigration from "../../../migrations/0009_login_email_doma
 import { buildSeedSql } from "../../../scripts/local-seed-fixture.mjs";
 import { migrationStatements } from "./migration-statements";
 
-const origin = "https://hqbase.test";
+const origin = "https://sovereign-mail.test";
 const password = "local-seed-password";
 
 describe("local database seed fixture", () => {
@@ -92,7 +92,7 @@ describe("local database seed fixture", () => {
   it("creates credentials that Better Auth can use for a normal session", async () => {
     const response = await SELF.fetch(`${origin}/api/auth/sign-in/email`, {
       body: JSON.stringify({
-        email: "owner@hqbase.test",
+        email: "owner@sovereign-mail.test",
         password,
         rememberMe: false
       }),
@@ -105,7 +105,7 @@ describe("local database seed fixture", () => {
       headers: { cookie: extractSessionCookie(response) }
     });
     await expect(currentUser.json()).resolves.toMatchObject({
-      email: "owner@hqbase.test",
+      email: "owner@sovereign-mail.test",
       role: "owner",
       passwordSetupRequired: false
     });

@@ -138,7 +138,14 @@ export async function findMailboxForSending(
        JOIN mailboxes m ON m.id = a.mailbox_id
        JOIN mail_domains d ON d.id = a.mail_domain_id
        WHERE a.address = ? AND a.send_enabled = 1 AND d.is_enabled = 1
-         AND d.sending_status = 'ready'
+         AND (
+           d.sending_status = 'ready'
+           OR EXISTS (
+             SELECT 1 FROM provider_connections p
+             WHERE p.mailbox_address = a.address AND p.kind = 'imap-smtp'
+               AND p.is_enabled = 1 AND p.verified_at IS NOT NULL
+           )
+         )
        LIMIT 1`
     )
     .bind(address.toLowerCase())
@@ -258,8 +265,55 @@ export async function deleteMailboxAddress(
   addressId: string
 ): Promise<boolean> {
   const result = await db
-    .prepare("DELETE FROM mailbox_addresses WHERE id = ? AND mailbox_id = ? AND is_primary = 0")
+    .prepare(
+      `DELETE FROM mailbox_addresses
+       WHERE id = ? AND mailbox_id = ? AND is_primary = 0
+         AND NOT EXISTS (
+           SELECT 1 FROM provider_connections
+           WHERE lower(provider_connections.mailbox_address) = lower(mailbox_addresses.address)
+         )`
+    )
     .bind(addressId, mailboxId)
+    .run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
+export async function deleteMailboxWhenEmpty(db: D1Database, id: string): Promise<boolean> {
+  const result = await db
+    .prepare(
+      `DELETE FROM mailboxes
+       WHERE id = ?
+         AND NOT EXISTS (
+           SELECT 1 FROM messages
+           WHERE messages.mailbox_id = mailboxes.id
+              OR messages.delivered_to_address_id IN (
+                SELECT address.id FROM mailbox_addresses address
+                WHERE address.mailbox_id = mailboxes.id
+              )
+              OR messages.sent_from_address_id IN (
+                SELECT address.id FROM mailbox_addresses address
+                WHERE address.mailbox_id = mailboxes.id
+              )
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM drafts
+           WHERE drafts.mailbox_id = mailboxes.id
+              OR lower(drafts.from_address) = lower(mailboxes.address)
+              OR lower(drafts.from_address) IN (
+                SELECT address.address FROM mailbox_addresses address
+                WHERE address.mailbox_id = mailboxes.id
+              )
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM provider_connections
+           WHERE lower(provider_connections.mailbox_address) = lower(mailboxes.address)
+              OR lower(provider_connections.mailbox_address) IN (
+                SELECT address.address FROM mailbox_addresses address
+                WHERE address.mailbox_id = mailboxes.id
+              )
+         )`
+    )
+    .bind(id)
     .run();
   return (result.meta.changes ?? 0) > 0;
 }

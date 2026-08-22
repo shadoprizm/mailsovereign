@@ -18,6 +18,7 @@ const activeZone: CloudflareZone = {
   accountName: "Example",
   id: "zone-1",
   name: "example.com",
+  nameServers: ["merlin.ns.cloudflare.com", "violet.ns.cloudflare.com"],
   status: "active",
   type: "full"
 };
@@ -84,7 +85,7 @@ describe("setup form validation", () => {
       )
     ).toEqual({
       email:
-        "Use an email account you can always access, even when HQBase is unavailable. It cannot use a domain connected to this workspace."
+        "Use an email account you can always access, even when Sovereign Mail is unavailable. It cannot use a domain connected to this workspace."
     });
   });
 
@@ -96,7 +97,7 @@ describe("setup form validation", () => {
         portalZone: null
       })
     ).toEqual({
-      appSubdomain: "Use one DNS label, such as hqbase or inbox.",
+      appSubdomain: "Use one DNS label, such as app or inbox.",
       selectedZoneIds: "Choose at least one email domain.",
       portalZoneId: "Choose which selected domain hosts the workspace portal."
     });
@@ -104,7 +105,7 @@ describe("setup form validation", () => {
     expect(
       hasErrors(
         validateDomain({
-          appSubdomain: "hqbase",
+          appSubdomain: "sovereign-mail",
           selectedZones: [activeZone],
           portalZone: activeZone
         })
@@ -113,7 +114,7 @@ describe("setup form validation", () => {
 
     expect(
       validateDomain({
-        appSubdomain: "hqbase",
+        appSubdomain: "sovereign-mail",
         selectedZones: Array.from({ length: 11 }, (_, index) => ({
           ...activeZone,
           id: `zone-${index}`,

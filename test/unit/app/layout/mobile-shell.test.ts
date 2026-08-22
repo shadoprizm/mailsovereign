@@ -67,6 +67,12 @@ describe("mobile application shell", () => {
     expect(composeForm).toContain("pb-[max(1rem,env(safe-area-inset-bottom))]");
   });
 
+  it("scrolls the complete new-message content while keeping its action footer visible", () => {
+    expect(composeForm).toContain("min-h-0 flex-1 overflow-y-auto overscroll-contain");
+    expect(composeForm).toContain("contained={false}");
+    expect(composeForm).toContain("flex shrink-0 items-center justify-between");
+  });
+
   it("keeps the MCP dialog inside the dynamic viewport and device safe areas", () => {
     expect(mcpConnectionDialog).toContain("100dvh");
     expect(mcpConnectionDialog).toContain("safe-area-inset-top");

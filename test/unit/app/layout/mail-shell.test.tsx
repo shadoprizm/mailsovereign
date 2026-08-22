@@ -126,6 +126,7 @@ describe("mail shell", () => {
     expect(html).toContain('src="/logo.svg"');
     expect(html).toContain('href="/inbox"');
     expect(html).toContain('href="/catch-all"');
+    expect(html).toContain('href="/contacts"');
     expect(html).toContain('href="/settings/mailboxes"');
     expect(html).toContain("7 unread");
     expect(html).toContain("2 unread");
@@ -137,7 +138,7 @@ describe("mail shell", () => {
     expect(html).toContain('aria-label="Switch to light mode"');
     expect(html.indexOf("Settings")).toBeLessThan(html.indexOf("Dark mode"));
     expect(html.indexOf("Dark mode")).toBeLessThan(html.indexOf("Open profile menu"));
-    expect(html.match(/border-t pt-2/g)).toHaveLength(2);
+    expect(html.match(/border-t pt-2/g)).toHaveLength(3);
     expect(html).toContain('stroke-width="1.5"');
     expect(html).not.toContain(">HQ<");
     expect(html).not.toContain(">Mail</div>");
@@ -202,7 +203,7 @@ describe("mail shell", () => {
     expect(html).toContain("Connect MCP");
     expect(html.indexOf("Connect MCP")).toBeLessThan(html.indexOf("Settings"));
     expect(html.indexOf("Settings")).toBeLessThan(html.indexOf("Open profile menu"));
-    expect(html.match(/border-t pt-2/g)).toHaveLength(2);
+    expect(html.match(/border-t pt-2/g)).toHaveLength(3);
   });
 
   it("shows per-mailbox unread labels and scopes the Inbox count to the selection", () => {
@@ -280,6 +281,8 @@ describe("mail shell", () => {
             mailboxId: "mailbox-1",
             replyToMessageId: null,
             forwardOfMessageId: null,
+            signatureMode: "none",
+            signatureId: null,
             from: "olivia@example.com",
             to: ["support@example.com"],
             cc: [],
@@ -304,6 +307,7 @@ describe("mail shell", () => {
         search=""
         selectedId={null}
         onBack={() => undefined}
+        onDelete={() => Promise.resolve()}
         onSelect={() => undefined}
       />
     );
@@ -314,6 +318,7 @@ describe("mail shell", () => {
     expect(html).toContain("Here is the requested summary.");
     expect(html).toContain('href="/drafts/draft%2Fone"');
     expect(html).toContain("1 attachment");
+    expect(html).toContain('aria-label="Discard draft: Quarterly follow-up"');
   });
 
   it("combines the compact folder label and conversation count in one list header", () => {

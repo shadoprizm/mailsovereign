@@ -1,33 +1,37 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createWranglerConfig } from "../../../scripts/hqbase/config.mjs";
-import { cloudflareOAuthConfig, createManifest } from "../../../scripts/hqbase/install.mjs";
-import { updateOAuthManifest } from "../../../scripts/hqbase/oauth.mjs";
+import { createWranglerConfig } from "../../../scripts/sovereign-mail/config.mjs";
+import { cloudflareOAuthConfig, createManifest } from "../../../scripts/sovereign-mail/install.mjs";
+import { updateOAuthManifest } from "../../../scripts/sovereign-mail/oauth.mjs";
 
 const repositoryWranglerConfig = JSON.parse(
   readFileSync(resolve(import.meta.dirname, "../../../wrangler.jsonc"), "utf8")
 );
 
-describe("HQBase installation resources", () => {
+describe("Sovereign Mail installation resources", () => {
   it("creates a fresh, unowned manifest before provisioning", () => {
-    const manifest = createManifest("qa", {});
+    const manifest = createCustomerManifest("qa");
 
     expect(manifest.d1).toEqual({
-      name: "hqbase-qa",
+      name: "sovereign-mail-qa",
       id: "00000000-0000-0000-0000-000000000000",
       created: false,
       reused: false
     });
     expect(manifest.r2).toEqual({
-      bucket: "hqbase-qa-mail",
+      bucket: "sovereign-mail-qa-mail",
       created: false,
       reused: false
     });
-    expect(manifest.worker.name).toBe("hqbase-qa");
-    expect(manifest.queue.name).toBe("hqbase-qa-jobs");
+    expect(manifest.worker.name).toBe("sovereign-mail-qa");
+    expect(manifest.queue.name).toBe("sovereign-mail-qa-jobs");
+    expect(manifest.ai).toEqual({ binding: "AI", provider: "cloudflare-workers-ai" });
     expect(manifest.version).toBe(2);
-    expect(manifest.cloudflareOAuth).toEqual({ mode: "official" });
+    expect(manifest.cloudflareOAuth).toEqual({
+      clientId: "customer-client",
+      mode: "customer"
+    });
   });
 
   it("records customer-managed OAuth as non-secret deployment configuration", () => {
@@ -44,6 +48,7 @@ describe("HQBase installation resources", () => {
     expect(manifest.authUrl).toBe("https://mail.example.com");
 
     const config = createWranglerConfig(manifest);
+    expect(config.ai).toEqual({ binding: "AI" });
     expect(config.vars).toMatchObject({
       BETTER_AUTH_URL: "https://mail.example.com",
       CLOUDFLARE_OAUTH_CLIENT_ID: "customer-client",
@@ -53,13 +58,13 @@ describe("HQBase installation resources", () => {
   });
 
   it("routes Worker-owned paths ahead of the single-page-application fallback", () => {
-    const config = createWranglerConfig(createManifest("qa", {}));
+    const config = createWranglerConfig(createCustomerManifest("qa"));
 
     expect(config.assets.run_worker_first).toEqual(["/api/*", "/mcp", "/mcp/*", "/.well-known/*"]);
   });
 
   it("keeps asset routing identical to the repository Wrangler configuration", () => {
-    const config = createWranglerConfig(createManifest("qa", {}));
+    const config = createWranglerConfig(createCustomerManifest("qa"));
     const { directory: _generated, ...generated } = config.assets;
     const { directory: _repository, ...repository } = repositoryWranglerConfig.assets;
 
@@ -87,34 +92,42 @@ describe("HQBase installation resources", () => {
         clientId: "customer-client",
         mode: "token"
       })
-    ).toThrow('must be "official" or "customer"');
+    ).toThrow("supports only customer-managed OAuth");
     expect(() =>
       cloudflareOAuthConfig({
         authUrl: "https://mail.example.com",
         clientId: "unexpected",
         mode: "official"
       })
-    ).toThrow("requires --oauth-mode customer");
+    ).toThrow("supports only customer-managed OAuth");
   });
 
-  it("switches an existing manifest between customer-managed and official OAuth", () => {
-    const installed = createManifest("existing", {});
+  it("updates customer-managed OAuth without introducing a shared upstream mode", () => {
+    const installed = createCustomerManifest("existing");
     const customer = updateOAuthManifest(installed, {
       authUrl: "https://mail.example.com",
       clientId: "customer-client",
       mode: "customer"
-    });
-    const official = updateOAuthManifest(customer, {
-      authUrl: undefined,
-      clientId: undefined,
-      mode: "official"
     });
 
     expect(customer.cloudflareOAuth).toEqual({
       clientId: "customer-client",
       mode: "customer"
     });
-    expect(official.cloudflareOAuth).toEqual({ mode: "official" });
-    expect(official.authUrl).toBe("https://mail.example.com");
+    expect(() =>
+      updateOAuthManifest(customer, {
+        authUrl: undefined,
+        clientId: undefined,
+        mode: "official"
+      })
+    ).toThrow("supports only customer-managed OAuth");
   });
 });
+
+function createCustomerManifest(name) {
+  return createManifest(name, {
+    authUrl: "https://mail.example.com",
+    oauthClientId: "customer-client",
+    oauthMode: "customer"
+  });
+}

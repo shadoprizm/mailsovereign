@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Archive,
+  ContactRound,
   FilePenLine,
   Inbox,
   Send,
@@ -57,6 +58,7 @@ const icons: Record<FolderId, LucideIcon> = {
   archived: Archive,
   trash: Trash2,
   catchall: TriangleAlert,
+  contacts: ContactRound,
   settings: Settings
 };
 
@@ -95,9 +97,9 @@ export function Sidebar({
     >
       <div className="mb-7 flex h-9 items-center gap-2.5 px-2">
         <img alt="" className="h-7 w-auto shrink-0" src="/logo.svg" />
-        <span className="text-sm font-medium tracking-tight">HQBase</span>
+        <span className="text-sm font-medium tracking-tight">Sovereign Mail</span>
       </div>
-      {isDrawer && mailboxFilter ? (
+      {isDrawer && mailboxFilter && activeFolder !== "contacts" ? (
         <FieldGroup className="mb-4 gap-0 px-2">
           <Field className="gap-1.5">
             <FieldLabel
@@ -179,6 +181,31 @@ export function Sidebar({
             </Button>
           );
         })}
+        <div className="mt-2 border-t pt-2">
+          <Button
+            asChild
+            className={cn(
+              "h-8 w-full justify-start gap-2.5 px-2.5 text-[13px] font-normal text-muted-foreground",
+              isDrawer && "h-11 text-sm",
+              activeFolder === "contacts" && "bg-muted text-foreground"
+            )}
+            variant="ghost"
+          >
+            <a
+              aria-current={activeFolder === "contacts" ? "page" : undefined}
+              data-navigation-item
+              href={appRoutePath({ kind: "contacts" })}
+              onClick={(event) => {
+                if (isModifiedNavigation(event)) return;
+                event.preventDefault();
+                onFolderChange("contacts");
+              }}
+            >
+              <ContactRound />
+              Contacts
+            </a>
+          </Button>
+        </div>
         <div className="mt-auto">
           <div className="flex flex-col gap-0.5 border-t pt-2">
             {utilityAction}

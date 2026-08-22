@@ -8,6 +8,7 @@ export type MailDomain = {
   dnsStatus: "pending" | "ready" | "degraded";
   catchAllPolicy: "reject" | "unassigned" | "mailbox";
   catchAllMailboxId: string | null;
+  canRemove: boolean;
   isEnabled: boolean;
   updatedAt: string;
 };

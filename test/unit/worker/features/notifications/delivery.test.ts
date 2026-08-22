@@ -56,7 +56,7 @@ const env = {
   DB: {} as D1Database,
   VAPID_PRIVATE_KEY: "private",
   VAPID_PUBLIC_KEY: "public",
-  VAPID_SUBJECT: "https://hqbase.io"
+  VAPID_SUBJECT: "https://mailsovereign.com"
 } as unknown as WorkerEnv;
 
 describe("push delivery", () => {
@@ -104,7 +104,7 @@ describe("push delivery", () => {
       vi.mocked(webpush.sendNotification).mock.calls[0]?.[1] as string
     ) as Record<string, unknown>;
     expect(payload).toEqual({
-      tag: "hqbase-thread-thr_1",
+      tag: "sovereign-mail-thread-thr_1",
       unreadCount: 3,
       url: "/inbox/msg_1"
     });

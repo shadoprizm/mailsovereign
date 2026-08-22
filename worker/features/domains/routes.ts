@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import {
-  isRecentSession,
+  isRecentSessionForEnvironment,
   requireAuthContext,
-  requireRecentSession,
+  requireRecentSessionForEnvironment,
   requireRole
 } from "../../auth/session";
 import type { HonoApp } from "../../lib/env";
@@ -22,7 +22,10 @@ import {
 import {
   attachWorkerCustomDomain,
   configureCloudflareDomain,
+  createCloudflareZone,
+  getCloudflareZone,
   inspectCloudflareDomain,
+  listCloudflareAccounts,
   listCloudflareZones
 } from "../setup/cloudflare";
 import { upsertWorkspaceHost } from "../setup/queries";
@@ -32,10 +35,14 @@ import {
   updateMailDomainSettings,
   upsertMailDomain
 } from "./queries";
+import { removeUnusedMailDomain } from "./service";
 import {
   changePortalHostnameSchema,
+  cloudflareZoneStatusSchema,
+  createCloudflareZoneSchema,
   createMailDomainSchema,
   provisionMailDomainSchema,
+  removeMailDomainSchema,
   updateMailDomainSchema
 } from "./validation";
 
@@ -56,7 +63,7 @@ domainRoutes.get("/", async (c) => {
 domainRoutes.get("/cloudflare/oauth/start", async (c) => {
   const auth = await requireAuthContext(c.env, c.req.raw);
   requireRole(auth, ["owner", "admin"]);
-  if (!isRecentSession(auth)) {
+  if (!isRecentSessionForEnvironment(auth, c.env)) {
     return recentAuthenticationRedirect(c.req.raw, "domains");
   }
   return startRuntimeCloudflareOAuth(c.req.raw, c.env, domainOAuthFlow);
@@ -71,6 +78,47 @@ domainRoutes.get("/cloudflare/zones", async (c) => {
   requireRole(auth, ["owner", "admin"]);
   const grant = await resolveRuntimeCloudflareGrant(c.req.raw, c.env);
   return c.json({ zones: await listCloudflareZones({ apiToken: grant }) });
+});
+
+domainRoutes.get("/cloudflare/accounts", async (c) => {
+  const auth = await requireAuthContext(c.env, c.req.raw);
+  requireRole(auth, ["owner", "admin"]);
+  const grant = await resolveRuntimeCloudflareGrant(c.req.raw, c.env);
+  return c.json({ accounts: await listCloudflareAccounts({ apiToken: grant }) });
+});
+
+domainRoutes.post("/cloudflare/zones", async (c) => {
+  const auth = await requireAuthContext(c.env, c.req.raw);
+  requireRole(auth, ["owner", "admin"]);
+  requireRecentSessionForEnvironment(auth, c.env);
+  const input = parseWith(createCloudflareZoneSchema, await readJson(c.req.raw));
+  await assertDomainUnusedByLoginEmails(c.env.DB, input.name);
+  const zone = await createCloudflareZone({
+    ...input,
+    apiToken: await resolveRuntimeCloudflareGrant(c.req.raw, c.env)
+  });
+  await recordAudit(c.env.DB, {
+    correlationId: c.get("correlationId"),
+    actorType: "user",
+    actorId: auth.user.id,
+    action: "cloudflare.zone.create",
+    resourceType: "cloudflare_zone",
+    resourceId: zone.id,
+    outcome: "success"
+  });
+  return c.json(zone, 201);
+});
+
+domainRoutes.get("/cloudflare/zones/:zoneId", async (c) => {
+  const auth = await requireAuthContext(c.env, c.req.raw);
+  requireRole(auth, ["owner", "admin"]);
+  const input = parseWith(cloudflareZoneStatusSchema, { zoneId: c.req.param("zoneId") });
+  return c.json(
+    await getCloudflareZone({
+      apiToken: await resolveRuntimeCloudflareGrant(c.req.raw, c.env),
+      zoneId: input.zoneId
+    })
+  );
 });
 
 domainRoutes.post("/cloudflare/revoke", async (c) => {
@@ -104,7 +152,7 @@ domainRoutes.post("/", async (c) => {
 domainRoutes.post("/provision", async (c) => {
   const auth = await requireAuthContext(c.env, c.req.raw);
   requireRole(auth, ["owner", "admin"]);
-  requireRecentSession(auth);
+  requireRecentSessionForEnvironment(auth, c.env);
   const input = parseWith(provisionMailDomainSchema, await readJson(c.req.raw));
   if (!(await findMailDomainByName(c.env.DB, input.name))) {
     await assertDomainUnusedByLoginEmails(c.env.DB, input.name);
@@ -113,7 +161,7 @@ domainRoutes.post("/provision", async (c) => {
   const result = await configureCloudflareDomain({
     apiToken: grant,
     zoneId: input.zoneId,
-    workerName: c.env.HQBASE_WORKER_NAME ?? input.workerName,
+    workerName: c.env.SOVEREIGN_MAIL_WORKER_NAME ?? input.workerName,
     attachCustomDomain: false,
     enableSending: input.enableSending
   });
@@ -143,12 +191,12 @@ domainRoutes.post("/provision", async (c) => {
 domainRoutes.put("/portal", async (c) => {
   const auth = await requireAuthContext(c.env, c.req.raw);
   requireRole(auth, ["owner", "admin"]);
-  requireRecentSession(auth);
+  requireRecentSessionForEnvironment(auth, c.env);
   const input = parseWith(changePortalHostnameSchema, await readJson(c.req.raw));
   const grant = await resolveRuntimeCloudflareGrant(c.req.raw, c.env);
   const inspected = await inspectCloudflareDomain({
     apiToken: grant,
-    workerName: c.env.HQBASE_WORKER_NAME ?? input.workerName,
+    workerName: c.env.SOVEREIGN_MAIL_WORKER_NAME ?? input.workerName,
     zoneId: input.zoneId
   });
   await attachWorkerCustomDomain({
@@ -196,4 +244,22 @@ domainRoutes.patch("/:id", async (c) => {
     outcome: "success"
   });
   return c.json(domain);
+});
+
+domainRoutes.delete("/:id", async (c) => {
+  const auth = await requireAuthContext(c.env, c.req.raw);
+  requireRole(auth, ["owner", "admin"]);
+  requireRecentSessionForEnvironment(auth, c.env);
+  const input = parseWith(removeMailDomainSchema, await readJson(c.req.raw));
+  await removeUnusedMailDomain(c.env.DB, c.req.param("id"), input.confirmation);
+  await recordAudit(c.env.DB, {
+    correlationId: c.get("correlationId"),
+    actorType: "user",
+    actorId: auth.user.id,
+    action: "domain.delete",
+    resourceType: "domain",
+    resourceId: c.req.param("id"),
+    outcome: "success"
+  });
+  return c.body(null, 204);
 });

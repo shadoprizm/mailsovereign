@@ -9,15 +9,12 @@ import { describe, expect, it, vi } from "vitest";
 
 const env = {
   BETTER_AUTH_SECRET: "test-better-auth-secret-with-enough-entropy",
-  CLOUDFLARE_OAUTH_MODE: "official"
-};
-
-const customerEnv = {
-  BETTER_AUTH_SECRET: "test-better-auth-secret-with-enough-entropy",
   BETTER_AUTH_URL: "https://mail.example.com",
   CLOUDFLARE_OAUTH_CLIENT_ID: "customer-client",
   CLOUDFLARE_OAUTH_MODE: "customer"
 };
+
+const customerEnv = env;
 
 const updateFlow = {
   callbackPath: "/api/updates/cloudflare/oauth/callback",
@@ -31,7 +28,13 @@ const setupFlow = {
   returnPath: "/setup"
 } as const;
 
-describe("HQBase runtime Cloudflare OAuth", () => {
+const domainsFlow = {
+  callbackPath: "/api/domains/cloudflare/oauth/callback",
+  operation: "domains",
+  settingsTab: "domains"
+} as const;
+
+describe("Sovereign Mail runtime Cloudflare OAuth", () => {
   it("returns stale sessions to the originating settings modal", () => {
     const response = recentAuthenticationRedirect(
       new Request("https://mail.example.com/api/updates/cloudflare/oauth/start"),
@@ -56,14 +59,14 @@ describe("HQBase runtime Cloudflare OAuth", () => {
     const cookies = response.headers.get("set-cookie") ?? "";
 
     expect(response.status).toBe(303);
-    expect(target.pathname).toBe("/oauth/authorize");
-    expect(target.searchParams.get("operation")).toBe("updates");
-    expect(target.searchParams.get("callback")).toBe(
+    expect(target.origin).toBe("https://dash.cloudflare.com");
+    expect(target.pathname).toBe("/oauth2/auth");
+    expect(target.searchParams.get("redirect_uri")).toBe(
       "https://mail.example.com/api/updates/cloudflare/oauth/callback"
     );
     expect(target.toString()).not.toContain("verifier");
-    expect(cookies).toContain("hqb_cf_oauth_verifier=");
-    expect(cookies).toContain("hqb_cf_oauth_grant=");
+    expect(cookies).toContain("sovereign_mail_cf_oauth_verifier=");
+    expect(cookies).toContain("sovereign_mail_cf_oauth_grant=");
   });
 
   it("exchanges, encrypts, and resolves the grant only on the server", async () => {
@@ -73,8 +76,8 @@ describe("HQBase runtime Cloudflare OAuth", () => {
       updateFlow
     );
     const startCookies = started.headers.get("set-cookie") ?? "";
-    const state = cookieValue(startCookies, "hqb_cf_oauth_state");
-    const verifier = cookieValue(startCookies, "hqb_cf_oauth_verifier");
+    const state = cookieValue(startCookies, "sovereign_mail_cf_oauth_state");
+    const verifier = cookieValue(startCookies, "sovereign_mail_cf_oauth_verifier");
     const tokenFetch = vi.fn<typeof fetch>(() =>
       Promise.resolve(Response.json({ access_token: "runtime-oauth-secret" }))
     );
@@ -84,8 +87,8 @@ describe("HQBase runtime Cloudflare OAuth", () => {
         {
           headers: {
             cookie: cookieHeader({
-              hqb_cf_oauth_state: state,
-              hqb_cf_oauth_verifier: verifier
+              sovereign_mail_cf_oauth_state: state,
+              sovereign_mail_cf_oauth_verifier: verifier
             })
           }
         }
@@ -95,9 +98,9 @@ describe("HQBase runtime Cloudflare OAuth", () => {
       tokenFetch
     );
     const grantCookie = finished.headers.get("set-cookie") ?? "";
-    const encryptedGrant = cookieValue(grantCookie, "hqb_cf_oauth_grant");
+    const encryptedGrant = cookieValue(grantCookie, "sovereign_mail_cf_oauth_grant");
     const grantRequest = new Request("https://mail.example.com/api/updates/apply", {
-      headers: { cookie: cookieHeader({ hqb_cf_oauth_grant: encryptedGrant }) }
+      headers: { cookie: cookieHeader({ sovereign_mail_cf_oauth_grant: encryptedGrant }) }
     });
 
     expect(finished.headers.get("location")).toBe(
@@ -117,16 +120,16 @@ describe("HQBase runtime Cloudflare OAuth", () => {
     );
     const target = new URL(started.headers.get("location") ?? "");
     const startCookies = started.headers.get("set-cookie") ?? "";
-    const state = cookieValue(startCookies, "hqb_cf_oauth_state");
-    const verifier = cookieValue(startCookies, "hqb_cf_oauth_verifier");
+    const state = cookieValue(startCookies, "sovereign_mail_cf_oauth_state");
+    const verifier = cookieValue(startCookies, "sovereign_mail_cf_oauth_verifier");
     const finished = await finishRuntimeCloudflareOAuth(
       new Request(
         `https://mail.example.com/api/setup/cloudflare/oauth/callback?code=code-1&state=${state}`,
         {
           headers: {
             cookie: cookieHeader({
-              hqb_cf_oauth_state: state,
-              hqb_cf_oauth_verifier: verifier
+              sovereign_mail_cf_oauth_state: state,
+              sovereign_mail_cf_oauth_verifier: verifier
             })
           }
         }
@@ -138,8 +141,7 @@ describe("HQBase runtime Cloudflare OAuth", () => {
       )
     );
 
-    expect(target.searchParams.get("operation")).toBe("setup");
-    expect(target.searchParams.get("callback")).toBe(
+    expect(target.searchParams.get("redirect_uri")).toBe(
       "https://mail.example.com/api/setup/cloudflare/oauth/callback"
     );
     expect(finished.headers.get("location")).toBe(
@@ -168,6 +170,57 @@ describe("HQBase runtime Cloudflare OAuth", () => {
     expect(target.searchParams.get("code_challenge_method")).toBe("S256");
   });
 
+  it("does not request Workers script access when adding a mail domain", async () => {
+    const response = await startRuntimeCloudflareOAuth(
+      new Request("https://mail.example.com/api/domains/cloudflare/oauth/start"),
+      customerEnv,
+      domainsFlow
+    );
+    const target = new URL(response.headers.get("location") ?? "");
+
+    expect(target.searchParams.get("scope")).toBe(
+      "account-settings.read zone.read zone.write dns.write zone-settings.write email-routing-rule.write email-sending.write"
+    );
+    expect(target.searchParams.get("scope")).not.toContain("workers-scripts.write");
+  });
+
+  it("preserves only a bounded provider error code when authorization is denied", async () => {
+    const started = await startRuntimeCloudflareOAuth(
+      new Request("https://mail.example.com/api/setup/cloudflare/oauth/start"),
+      customerEnv,
+      setupFlow
+    );
+    const authorizationTarget = new URL(started.headers.get("location") ?? "");
+    const startCookies = started.headers.get("set-cookie") ?? "";
+    const state = cookieValue(startCookies, "sovereign_mail_cf_oauth_state");
+    const verifier = cookieValue(startCookies, "sovereign_mail_cf_oauth_verifier");
+    const finished = await finishRuntimeCloudflareOAuth(
+      new Request(
+        `https://mail.example.com/api/setup/cloudflare/oauth/callback?error=invalid_scope&error_description=do-not-forward&state=${state}`,
+        {
+          headers: {
+            cookie: cookieHeader({
+              sovereign_mail_cf_oauth_state: state,
+              sovereign_mail_cf_oauth_verifier: verifier
+            })
+          }
+        }
+      ),
+      customerEnv,
+      setupFlow
+    );
+    const location = finished.headers.get("location") ?? "";
+
+    expect(authorizationTarget.searchParams.get("scope")).toBe(
+      "account-settings.read zone.read zone.write dns.write zone-settings.write email-routing-rule.write email-sending.write"
+    );
+    expect(authorizationTarget.searchParams.get("scope")).not.toContain("workers-scripts.write");
+    expect(location).toBe(
+      "https://mail.example.com/setup?cloudflare=denied&cloudflare_error=invalid_scope"
+    );
+    expect(location).not.toContain("do-not-forward");
+  });
+
   it("exchanges and revokes customer-managed grants with the customer client", async () => {
     const started = await startRuntimeCloudflareOAuth(
       new Request("https://mail.example.com/api/updates/cloudflare/oauth/start"),
@@ -175,8 +228,8 @@ describe("HQBase runtime Cloudflare OAuth", () => {
       updateFlow
     );
     const startCookies = started.headers.get("set-cookie") ?? "";
-    const state = cookieValue(startCookies, "hqb_cf_oauth_state");
-    const verifier = cookieValue(startCookies, "hqb_cf_oauth_verifier");
+    const state = cookieValue(startCookies, "sovereign_mail_cf_oauth_state");
+    const verifier = cookieValue(startCookies, "sovereign_mail_cf_oauth_verifier");
     const tokenFetch = vi.fn<typeof fetch>(() =>
       Promise.resolve(Response.json({ access_token: "customer-oauth-secret" }))
     );
@@ -187,8 +240,8 @@ describe("HQBase runtime Cloudflare OAuth", () => {
         {
           headers: {
             cookie: cookieHeader({
-              hqb_cf_oauth_state: state,
-              hqb_cf_oauth_verifier: verifier
+              sovereign_mail_cf_oauth_state: state,
+              sovereign_mail_cf_oauth_verifier: verifier
             })
           }
         }
@@ -229,7 +282,7 @@ describe("HQBase runtime Cloudflare OAuth", () => {
     }
   });
 
-  it("requires a runtime OAuth grant and revokes it with the HQBase client", async () => {
+  it("requires a runtime OAuth grant and revokes it with the customer client", async () => {
     await expect(
       resolveRuntimeCloudflareGrant(new Request("https://mail.example.com/api/updates/apply"), env)
     ).rejects.toThrow("Authorize Cloudflare again");
@@ -237,7 +290,7 @@ describe("HQBase runtime Cloudflare OAuth", () => {
     const revokeFetch = vi.fn<typeof fetch>(() => Promise.resolve(new Response(null)));
     await revokeRuntimeCloudflareGrant("runtime-oauth-secret", env, revokeFetch);
     expect(String(revokeFetch.mock.calls[0]?.[1]?.body)).toBe(
-      "client_id=1c413f324b518b452096929b847e6703&token=runtime-oauth-secret"
+      "client_id=customer-client&token=runtime-oauth-secret"
     );
   });
 });

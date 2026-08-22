@@ -1,7 +1,7 @@
 import type { MessageDetail } from "../messages/types";
 
 const maxQuotedCharacters = 100_000;
-const truncationNotice = "[Previous message truncated by HQBase]";
+const truncationNotice = "[Previous message truncated by Sovereign Mail]";
 
 type ReplySource = Pick<
   MessageDetail,

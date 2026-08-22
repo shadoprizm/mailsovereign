@@ -8,7 +8,19 @@ import {
   listDrafts,
   uploadDraftAttachment
 } from "@/features/drafts/api";
+import { DiscardDraftDialog } from "@/features/drafts/discard-draft-dialog";
 import type { Draft, DraftAttachment } from "@/features/drafts/types";
+import { listSignaturePreferences } from "@/features/signatures/api";
+import {
+  applySignatureToHtml,
+  defaultSignatureChoice,
+  editableMessageTextFromHtml,
+  htmlForSending,
+  replaceEditableMessageTextInHtml,
+  signatureForChoice,
+  signatureTextFromHtml
+} from "@/features/signatures/signature-content";
+import type { SignatureChoice, SignaturePreferences } from "@/features/signatures/types";
 import { playNotificationSound } from "@/lib/notification-sounds";
 
 import { replyToMessage, sendMessage } from "./api";
@@ -18,6 +30,7 @@ import {
   composeTitle,
   type DraftSaveState,
   defaultSendingIdentity,
+  draftRecoveryKey,
   draftStatus,
   findDraftForComposer,
   forwardedMessage,
@@ -56,10 +69,18 @@ export function ComposeDialog({
   const [subject, setSubject] = React.useState("");
   const [html, setHtml] = React.useState("<p></p>");
   const [text, setText] = React.useState("");
+  const [signaturePreferences, setSignaturePreferences] = React.useState<SignaturePreferences>({
+    signatures: [],
+    defaults: {}
+  });
+  const [signatureChoice, setSignatureChoice] = React.useState<SignatureChoice>(
+    defaultSignatureChoice()
+  );
   const [attachments, setAttachments] = React.useState<DraftAttachment[]>([]);
   const [isPending, setIsPending] = React.useState(false);
   const [isUploading, setIsUploading] = React.useState(false);
   const [saveState, setSaveState] = React.useState<DraftSaveState>("saved");
+  const [discardOpen, setDiscardOpen] = React.useState(false);
   const initialized = React.useRef(false);
   const onDraftsChangeRef = React.useRef(onDraftsChange);
   const onOpenChangeRef = React.useRef(onOpenChange);
@@ -68,7 +89,11 @@ export function ComposeDialog({
   const formId = React.useId();
   const replyToMessageId = mode === "reply" ? (message?.id ?? null) : null;
   const forwardOfMessageId = mode === "forward" ? (message?.id ?? null) : null;
-  const recoveryKey = `hqbase:compose:${mode}:${draftId ?? message?.id ?? "new"}`;
+  const recoveryKey = draft?.id
+    ? draftRecoveryKey(draft.id)
+    : draftId
+      ? draftRecoveryKey(draftId)
+      : null;
   const { initializeAutosave, resetAutosave } = useDraftAutosave({
     open,
     initialized,
@@ -84,6 +109,8 @@ export function ComposeDialog({
     subject,
     text,
     html,
+    signatureMode: signatureChoice.mode,
+    signatureId: signatureChoice.signatureId,
     setDraft,
     setSaveState
   });
@@ -93,13 +120,12 @@ export function ComposeDialog({
     initialized.current = false;
     void (async () => {
       try {
-        const drafts = await listDrafts();
-        const existing = findDraftForComposer(
-          drafts,
-          draftId,
-          replyToMessageId,
-          forwardOfMessageId
-        );
+        const [drafts, preferences] = await Promise.all([
+          draftId ? listDrafts() : Promise.resolve([]),
+          listSignaturePreferences()
+        ]);
+        setSignaturePreferences(preferences);
+        const existing = findDraftForComposer(drafts, draftId);
         if (draftId && !existing) {
           throw new Error("Draft not found.");
         }
@@ -108,12 +134,30 @@ export function ComposeDialog({
           mode === "reply" && message
             ? replySendingIdentity(message, identities, defaultIdentity)
             : defaultIdentity;
+        const initialChoice = existing
+          ? existing.signatureMode === "specific" && !existing.signatureId
+            ? { mode: "none" as const, signatureId: null }
+            : { mode: existing.signatureMode, signatureId: existing.signatureId }
+          : defaultSignatureChoice(
+              preferredIdentity
+                ? (preferences.defaults[preferredIdentity.address.toLowerCase()] ?? null)
+                : null
+            );
+        const initialHtml = existing
+          ? existing.html
+          : applySignatureToHtml(
+              forwarded?.html ?? "<p></p>",
+              signatureForChoice(preferences, preferredIdentity?.address ?? "", initialChoice),
+              mode === "forward" ? "before-quote" : "end"
+            );
         const initial =
           existing ??
           (await createDraft({
             mailboxId: preferredIdentity?.mailboxId ?? null,
             replyToMessageId,
             forwardOfMessageId,
+            signatureMode: initialChoice.mode,
+            signatureId: initialChoice.signatureId,
             from: preferredIdentity?.address ?? "",
             to: mode === "reply" && message ? [message.fromAddress] : [],
             cc: [],
@@ -124,13 +168,17 @@ export function ComposeDialog({
                 : mode === "forward" && message
                   ? `Fwd: ${message.subject.replace(/^(fw|fwd):\s*/i, "")}`
                   : "",
-            text: forwarded?.text ?? "",
-            html: forwarded?.html ?? "<p></p>"
+            text: signatureTextFromHtml(initialHtml),
+            html: initialHtml
           }));
         if (!existing) onDraftsChangeRef.current?.();
-        const recovered = readDraftRecovery(recoveryKey, initial.updatedAt);
+        const recovered = readDraftRecovery(draftRecoveryKey(initial.id), initial.updatedAt);
         setDraft(initial);
         initializeAutosave(initial);
+        setSignatureChoice({
+          mode: recovered?.signatureMode ?? initial.signatureMode,
+          signatureId: recovered?.signatureId ?? initial.signatureId
+        });
         setFrom(recovered?.from ?? initial.from);
         setTo(recovered?.to ?? initial.to.join(", "));
         setCc(recovered?.cc ?? initial.cc.join(", "));
@@ -153,7 +201,6 @@ export function ComposeDialog({
     identities,
     defaultIdentity,
     draftId,
-    recoveryKey,
     replyToMessageId,
     forwardOfMessageId,
     initializeAutosave
@@ -167,7 +214,7 @@ export function ComposeDialog({
       const common = {
         from,
         text,
-        html: normalizeDraftHtml(text, html),
+        html: htmlForSending(normalizeDraftHtml(text, html)),
         attachmentIds: attachments.map((attachment) => attachment.id),
         draftId: draft.id
       };
@@ -195,7 +242,7 @@ export function ComposeDialog({
       initialized.current = false;
       setDraft(null);
       resetAutosave();
-      localStorage.removeItem(recoveryKey);
+      localStorage.removeItem(draftRecoveryKey(draft.id));
       onOpenChange(false);
       onDraftsChange?.();
       onSent();
@@ -235,9 +282,10 @@ export function ComposeDialog({
     initialized.current = false;
     setDraft(null);
     resetAutosave();
-    localStorage.removeItem(recoveryKey);
+    if (draft) localStorage.removeItem(draftRecoveryKey(draft.id));
     onOpenChange(false);
     onDraftsChange?.();
+    toast.success("Draft discarded.");
   }
 
   if (!open) return null;
@@ -251,6 +299,7 @@ export function ComposeDialog({
   const content = (
     <ComposeForm
       attachments={attachments}
+      aiCurrentText={editableMessageTextFromHtml(html, mode)}
       bcc={bcc}
       cc={cc}
       formId={formId}
@@ -258,14 +307,29 @@ export function ComposeDialog({
       html={html}
       identities={identities}
       isPending={isPending}
+      messageId={message?.id ?? null}
       mode={mode}
       presentation={presentation}
       ready={Boolean(draft && initialized.current)}
       sendDisabled={sendDisabled}
       subject={subject}
+      signatures={signaturePreferences.signatures}
+      signatureChoice={signatureChoice}
+      defaultSignatureName={
+        signatureForChoice(signaturePreferences, from, defaultSignatureChoice())?.name ?? null
+      }
       threadContext={threadContext}
       to={to}
-      onDiscard={() => void discard()}
+      discardDisabled={isPending || isUploading || !draft}
+      onDiscard={() => setDiscardOpen(true)}
+      onUseAiProposal={(proposal) => {
+        setHtml((current) => {
+          const next = replaceEditableMessageTextInHtml(current, proposal, mode);
+          setText(signatureTextFromHtml(next));
+          return next;
+        });
+        toast.success("AI proposal added. You can keep editing before you send.");
+      }}
       onEditorChange={(nextHtml, nextText) => {
         setHtml(nextHtml);
         setText(nextText);
@@ -274,7 +338,40 @@ export function ComposeDialog({
       onRemoveAttachment={(item) => void removeAttachment(item)}
       onSetBcc={setBcc}
       onSetCc={setCc}
-      onSetFrom={setFrom}
+      onSetFrom={(nextFrom) => {
+        setFrom(nextFrom);
+        if (signatureChoice.mode !== "default") return;
+        const nextSignature = signatureForChoice(
+          signaturePreferences,
+          nextFrom,
+          defaultSignatureChoice()
+        );
+        setSignatureChoice(defaultSignatureChoice(nextSignature?.id ?? null));
+        setHtml((current) => {
+          const next = applySignatureToHtml(
+            current,
+            nextSignature,
+            mode === "forward" ? "before-quote" : "end"
+          );
+          setText(signatureTextFromHtml(next));
+          return next;
+        });
+      }}
+      onSetSignatureChoice={(choice) => {
+        const nextSignature = signatureForChoice(signaturePreferences, from, choice);
+        const persistedChoice =
+          choice.mode === "default" ? defaultSignatureChoice(nextSignature?.id ?? null) : choice;
+        setSignatureChoice(persistedChoice);
+        setHtml((current) => {
+          const next = applySignatureToHtml(
+            current,
+            nextSignature,
+            mode === "forward" ? "before-quote" : "end"
+          );
+          setText(signatureTextFromHtml(next));
+          return next;
+        });
+      }}
       onSetSubject={setSubject}
       onSetTo={setTo}
       onSubmit={(event) => void handleSubmit(event)}
@@ -282,16 +379,19 @@ export function ComposeDialog({
   );
 
   return (
-    <ComposeSurface
-      formId={formId}
-      open={open}
-      presentation={presentation}
-      sendDisabled={sendDisabled}
-      status={draftStatus(saveState)}
-      title={composeTitle(mode)}
-      onOpenChange={onOpenChange}
-    >
-      {content}
-    </ComposeSurface>
+    <>
+      <ComposeSurface
+        formId={formId}
+        open={open}
+        presentation={presentation}
+        sendDisabled={sendDisabled}
+        status={draftStatus(saveState)}
+        title={composeTitle(mode)}
+        onOpenChange={onOpenChange}
+      >
+        {content}
+      </ComposeSurface>
+      <DiscardDraftDialog open={discardOpen} onConfirm={discard} onOpenChange={setDiscardOpen} />
+    </>
   );
 }

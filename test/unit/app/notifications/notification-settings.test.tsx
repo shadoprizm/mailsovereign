@@ -25,7 +25,7 @@ describe("notification settings", () => {
     );
     expect(blocked).toContain("Notifications are blocked.");
     expect(blocked).toContain("disabled");
-    expect(unsupported).toContain("Install HQBase to the iOS Home Screen");
+    expect(unsupported).toContain("Install Sovereign Mail to the iOS Home Screen");
     expect(unsupported).toContain("disabled");
   });
 });

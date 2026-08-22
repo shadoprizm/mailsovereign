@@ -134,6 +134,27 @@ describe("conversation reader", () => {
     expect(listHtml).toContain("Pull to refresh");
   });
 
+  it("replaces move actions with permanent deletion in Trash", () => {
+    const html = renderToStaticMarkup(
+      <MessageDetail
+        activeFolder="trash"
+        defaultFromMailboxId="mbx_1"
+        mailboxes={[]}
+        messages={[{ ...firstMessage, folder: "trash" }]}
+        selectedId={firstMessage.id}
+        onAction={() => undefined}
+        onBack={() => undefined}
+        onDelete={async () => undefined}
+        onRefresh={() => undefined}
+        onSent={() => undefined}
+      />
+    );
+
+    expect(html).toContain('aria-label="Delete conversation permanently"');
+    expect(html).not.toContain('aria-label="Archive conversation"');
+    expect(html).not.toContain('aria-label="Move conversation to Trash"');
+  });
+
   it("shows the exact right-aligned conversation total and a manual paging fallback", () => {
     const html = renderToStaticMarkup(
       <InboxPage

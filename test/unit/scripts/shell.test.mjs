@@ -17,7 +17,7 @@ function childArgv(args) {
 
 describe("child process arguments", () => {
   it("delivers ordinary arguments unchanged", () => {
-    const args = ["exec", "wrangler", "d1", "create", "hqbase-qa"];
+    const args = ["exec", "wrangler", "d1", "create", "sovereign-mail-qa"];
 
     expect(childArgv(args)).toEqual(args);
   });

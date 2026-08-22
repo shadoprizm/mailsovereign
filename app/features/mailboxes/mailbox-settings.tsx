@@ -25,9 +25,16 @@ import {
 import { BulkMailboxAccessDialog } from "@/features/mailbox-access/bulk-mailbox-access-dialog";
 import { useMailboxAccessPolicies } from "@/features/mailbox-access/mailbox-access-policies";
 import { MailboxAccessPolicyDialog } from "@/features/mailbox-access/mailbox-access-policy";
+import { ConfirmedRemovalDialog } from "@/features/settings/confirmed-removal-dialog";
 import { SettingsSection } from "@/features/settings/settings-section";
 import type { WorkspaceUser } from "@/features/users/types";
-import { addMailboxAddress, createMailbox, removeMailboxAddress, updateMailbox } from "./api";
+import {
+  addMailboxAddress,
+  createMailbox,
+  removeMailbox,
+  removeMailboxAddress,
+  updateMailbox
+} from "./api";
 import { DefaultFromMailboxControl } from "./default-from-mailbox-control";
 import { MailboxAliasDialog } from "./mailbox-alias-dialog";
 import { MailboxDetailsSheet } from "./mailbox-details-sheet";
@@ -56,6 +63,7 @@ export function MailboxSettings({
   const [displayName, setDisplayName] = React.useState("");
   const [createOpen, setCreateOpen] = React.useState(false);
   const [aliasMailbox, setAliasMailbox] = React.useState<Mailbox | null>(null);
+  const [removalMailbox, setRemovalMailbox] = React.useState<Mailbox | null>(null);
   const [detailsMailboxId, setDetailsMailboxId] = React.useState<string | null>(null);
   const [accessMailboxId, setAccessMailboxId] = React.useState<string | null>(null);
   const [bulkAccessOpen, setBulkAccessOpen] = React.useState(false);
@@ -243,6 +251,10 @@ export function MailboxSettings({
         onOpenChange={(open) => {
           if (!open) setDetailsMailboxId(null);
         }}
+        onRemoveMailbox={(mailbox) => {
+          setDetailsMailboxId(null);
+          setRemovalMailbox(mailbox);
+        }}
         onRemoveAddress={(mailbox, addressId) => void handleRemoveAlias(mailbox, addressId)}
         onToggle={(mailbox) => void handleToggle(mailbox)}
       />
@@ -257,6 +269,28 @@ export function MailboxSettings({
           setAliasAddress("");
         }}
         onSubmit={(event) => void handleAlias(event)}
+      />
+
+      <ConfirmedRemovalDialog
+        confirmLabel="Remove mailbox"
+        description={
+          <>
+            This removes the empty mailbox from Sovereign Mail. It does not change DNS, MX records,
+            Cloudflare Email Routing, or external providers such as Resend.
+          </>
+        }
+        open={removalMailbox !== null}
+        target={removalMailbox?.address ?? ""}
+        title="Remove this mailbox?"
+        onConfirm={async () => {
+          if (!removalMailbox) return;
+          await removeMailbox(removalMailbox.id, removalMailbox.address);
+          toast.success(`${removalMailbox.address} was removed from Sovereign Mail.`);
+          onChanged();
+        }}
+        onOpenChange={(open) => {
+          if (!open) setRemovalMailbox(null);
+        }}
       />
 
       <MailboxAccessPolicyDialog

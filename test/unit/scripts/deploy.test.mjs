@@ -12,22 +12,22 @@ import {
   compareVersions,
   deploySource,
   executeSql,
-  hqbaseReleaseTag,
   loadVerifiedRelease,
   missingRequiredSecrets,
   needsInitialAuthSecret,
   normalizeConfig,
+  sovereignMailReleaseTag,
   verifyManifest,
   workerNameFromConfig
 } from "../../../scripts/release/deploy.mjs";
 import { foreignTrustees } from "../../../scripts/secure-directory.mjs";
 
-describe("HQBase release deployment", () => {
+describe("Sovereign Mail release deployment", () => {
   it("verifies product-bound manifests", () => {
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
     const manifest = {
-      format: "hqbase-release-v1",
-      product: "hqbase",
+      format: "sovereign-mail-release-v1",
+      product: "sovereign-mail",
       channel: "stable",
       version: "1.2.3",
       minVersion: "1.2.0",
@@ -50,17 +50,17 @@ describe("HQBase release deployment", () => {
     expect(compareVersions("0.1.0", "0.1.0")).toBe(0);
   });
   it("loads an exact signed candidate from local release files without weakening verification", async () => {
-    const workspace = mkdtempSync(resolve(tmpdir(), "hqbase-candidate-test-"));
+    const workspace = mkdtempSync(resolve(tmpdir(), "sovereign-mail-candidate-test-"));
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
     const artifact = Buffer.from("signed candidate");
     const manifest = {
-      format: "hqbase-release-v1",
-      product: "hqbase",
+      format: "sovereign-mail-release-v1",
+      product: "sovereign-mail",
       channel: "stable",
       version: "1.2.3",
       minVersion: "1.2.0",
       artifact: {
-        url: "https://github.com/HQBase/hqbase/releases/download/v1.2.3/hqbase-1.2.3.tar.gz",
+        url: "https://github.com/shadoprizm/mailsovereign/releases/download/v1.2.3/sovereign-mail-1.2.3.tar.gz",
         sha256: createHash("sha256").update(artifact).digest("hex"),
         size: artifact.length
       }
@@ -71,7 +71,7 @@ describe("HQBase release deployment", () => {
       signature: sign(null, Buffer.from(payload, "base64url"), privateKey).toString("base64url")
     };
     const manifestFile = resolve(workspace, "stable.json");
-    const artifactFile = resolve(workspace, "hqbase-1.2.3.tar.gz");
+    const artifactFile = resolve(workspace, "sovereign-mail-1.2.3.tar.gz");
     writeFileSync(manifestFile, JSON.stringify(envelope));
     writeFileSync(artifactFile, artifact);
     const publicKeyBase64 = publicKey.export({ type: "spki", format: "der" }).toString("base64");
@@ -92,7 +92,7 @@ describe("HQBase release deployment", () => {
           manifestFile,
           publicKeyBase64
         })
-      ).rejects.toThrow("Expected signed HQBase 1.2.4");
+      ).rejects.toThrow("Expected signed Sovereign Mail 1.2.4");
       writeFileSync(artifactFile, "tampered");
       await expect(
         loadVerifiedRelease({
@@ -115,7 +115,7 @@ describe("HQBase release deployment", () => {
           compatibility_flags: ["nodejs_compat"],
           assets: { directory: "../../../dist", binding: "ASSETS" },
           d1_databases: [{ binding: "DB", migrations_dir: "../../../migrations" }],
-          vars: { HQBASE_WORKER_NAME: "customer-worker" }
+          vars: { SOVEREIGN_MAIL_WORKER_NAME: "customer-worker" }
         },
         "0.1.1",
         "b".repeat(64)
@@ -126,15 +126,17 @@ describe("HQBase release deployment", () => {
       assets: { directory: "./dist", binding: "ASSETS" },
       d1_databases: [{ binding: "DB", migrations_dir: "migrations" }],
       vars: {
-        HQBASE_APP_VERSION: "0.1.1",
-        HQBASE_RELEASE_ARTIFACT_SHA256: "b".repeat(64),
-        HQBASE_WORKER_NAME: "customer-worker"
+        SOVEREIGN_MAIL_APP_VERSION: "0.1.1",
+        SOVEREIGN_MAIL_RELEASE_ARTIFACT_SHA256: "b".repeat(64),
+        SOVEREIGN_MAIL_WORKER_NAME: "customer-worker"
       }
     });
   });
-  it("creates an immutable active-version tag from the signed HQBase artifact", () => {
-    expect(hqbaseReleaseTag("0.1.5", "a".repeat(64))).toBe(`hqbase:0.1.5:${"a".repeat(64)}`);
-    expect(() => hqbaseReleaseTag("0.1.5", "not-a-digest")).toThrow("identity");
+  it("creates an immutable active-version tag from the signed Sovereign Mail artifact", () => {
+    expect(sovereignMailReleaseTag("0.1.5", "a".repeat(64))).toBe(
+      `sovereign-mail:0.1.5:${"a".repeat(64)}`
+    );
+    expect(() => sovereignMailReleaseTag("0.1.5", "not-a-digest")).toThrow("identity");
   });
   it("reads the installed release from the active Worker instead of the source checkout", () => {
     expect(
@@ -142,16 +144,16 @@ describe("HQBase release deployment", () => {
         { versions: [{ version_id: "active-version", percentage: 100 }] },
         {
           id: "active-version",
-          annotations: { "workers/tag": `hqbase:0.1.14:${"a".repeat(64)}` },
+          annotations: { "workers/tag": `sovereign-mail:0.1.14:${"a".repeat(64)}` },
           resources: {
-            bindings: [{ name: "HQBASE_APP_VERSION", type: "plain_text", text: "0.1.14" }]
+            bindings: [{ name: "SOVEREIGN_MAIL_APP_VERSION", type: "plain_text", text: "0.1.14" }]
           }
         }
       )
     ).toEqual({
       versionId: "active-version",
       version: "0.1.14",
-      tag: `hqbase:0.1.14:${"a".repeat(64)}`
+      tag: `sovereign-mail:0.1.14:${"a".repeat(64)}`
     });
     expect(() =>
       parseActiveRelease(
@@ -184,7 +186,7 @@ describe("HQBase release deployment", () => {
           JSON.stringify({
             id: "active-version",
             resources: {
-              bindings: [{ name: "HQBASE_APP_VERSION", type: "plain_text", text: "0.1.14" }]
+              bindings: [{ name: "SOVEREIGN_MAIL_APP_VERSION", type: "plain_text", text: "0.1.14" }]
             }
           })
       })
@@ -226,14 +228,16 @@ describe("HQBase release deployment", () => {
     ).toThrow("missing its installed version binding");
   });
   it("uses the configured Worker name as the runtime automation identity", () => {
-    expect(workerNameFromConfig({ name: "hqbase-deeptake-test" })).toBe("hqbase-deeptake-test");
+    expect(workerNameFromConfig({ name: "sovereign-mail-deeptake-test" })).toBe(
+      "sovereign-mail-deeptake-test"
+    );
     expect(() => workerNameFromConfig({ name: "" })).toThrow("deployed Worker name");
   });
   it("generates masked auth and Web Push secrets when the first Workers Build needs them", () => {
     let secretFile;
     deploySource("/customer/repo", {
       workersCi: true,
-      workerName: "hqbase-deeptake-test",
+      workerName: "sovereign-mail-deeptake-test",
       attempt: () => ({
         status: 0,
         stdout: "[]",
@@ -245,14 +249,16 @@ describe("HQBase release deployment", () => {
         publicKey: "generated-public-key",
         privateKey: "generated-private-key"
       }),
-      releaseTag: `hqbase:0.1.15:${"a".repeat(64)}`,
+      releaseTag: `sovereign-mail:0.1.15:${"a".repeat(64)}`,
       run: (command, args, cwd) => {
         expect(command).toBe("pnpm");
         expect(args.slice(0, 3)).toEqual(["exec", "wrangler", "deploy"]);
-        expect(args).toContain("HQBASE_WORKER_NAME:hqbase-deeptake-test");
-        expect(args).toContain("HQBASE_INSTALLATION_ID:00000000-0000-4000-8000-000000000123");
+        expect(args).toContain("SOVEREIGN_MAIL_WORKER_NAME:sovereign-mail-deeptake-test");
+        expect(args).toContain(
+          "SOVEREIGN_MAIL_INSTALLATION_ID:00000000-0000-4000-8000-000000000123"
+        );
         expect(args).toContain("--keep-vars");
-        expect(args).toContain(`hqbase:0.1.15:${"a".repeat(64)}`);
+        expect(args).toContain(`sovereign-mail:0.1.15:${"a".repeat(64)}`);
         expect(args.at(-2)).toBe("--secrets-file");
         expect(cwd).toBe("/customer/repo");
         secretFile = args.at(-1);
@@ -276,7 +282,7 @@ describe("HQBase release deployment", () => {
     let deployCalls = 0;
     deploySource("/customer/repo", {
       workersCi: true,
-      workerName: "hqbase-deeptake-test",
+      workerName: "sovereign-mail-deeptake-test",
       attempt: () => ({
         status: 0,
         stdout: JSON.stringify([
@@ -307,7 +313,7 @@ describe("HQBase release deployment", () => {
           status: 1,
           stdout: "",
           stderr:
-            'Worker "hqbase" not found.\n\nIf this is a new Worker, run `wrangler deploy` first.'
+            'Worker "sovereign-mail" not found.\n\nIf this is a new Worker, run `wrangler deploy` first.'
         },
         "BETTER_AUTH_SECRET"
       )
@@ -322,7 +328,7 @@ describe("HQBase release deployment", () => {
   it("adds a VAPID pair to an existing installation without rotating its auth identity", () => {
     deploySource("/customer/repo", {
       workersCi: true,
-      workerName: "hqbase-existing",
+      workerName: "sovereign-mail-existing",
       attempt: () => ({
         status: 0,
         stdout: JSON.stringify([{ name: "BETTER_AUTH_SECRET", type: "secret_text" }]),
@@ -333,7 +339,7 @@ describe("HQBase release deployment", () => {
         privateKey: "upgrade-private-key"
       }),
       run: (_command, args) => {
-        expect(args.some((arg) => arg.startsWith("HQBASE_INSTALLATION_ID:"))).toBe(false);
+        expect(args.some((arg) => arg.startsWith("SOVEREIGN_MAIL_INSTALLATION_ID:"))).toBe(false);
         const secretFile = args.at(-1);
         expect(JSON.parse(readFileSync(secretFile, "utf8"))).toEqual({
           VAPID_PUBLIC_KEY: "upgrade-public-key",
@@ -382,13 +388,13 @@ describe("HQBase release deployment", () => {
       run_worker_first: ["/api/*", "/mcp", "/mcp/*", "/.well-known/*"]
     });
   });
-  it("keeps HQBase product constants out of the Deploy to Cloudflare form", () => {
+  it("keeps Sovereign Mail product constants out of the Deploy to Cloudflare form", () => {
     const wranglerConfig = JSON.parse(readFileSync("wrangler.jsonc", "utf8"));
     expect(wranglerConfig).not.toHaveProperty("vars");
     const normalized = normalizeConfig(wranglerConfig, "0.1.23", "b".repeat(64));
     expect(normalized.vars).toMatchObject({
-      HQBASE_APP_VERSION: "0.1.23",
-      HQBASE_WORKER_NAME: wranglerConfig.name
+      SOVEREIGN_MAIL_APP_VERSION: "0.1.23",
+      SOVEREIGN_MAIL_WORKER_NAME: wranglerConfig.name
     });
     expect(normalized.observability.logs.invocation_logs).toBe(false);
     const customerManaged = normalizeConfig(

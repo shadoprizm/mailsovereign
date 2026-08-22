@@ -18,7 +18,7 @@ describe("debug settings", () => {
     const report = buildDebugReport(setup);
 
     expect(report).toContain("# workspace");
-    expect(report).toContain('product = "hqbase"');
+    expect(report).toContain('product = "sovereign-mail"');
     expect(report).toContain('primary_domain = "example.com"');
     expect(report).toContain("users = 3");
     expect(report).not.toContain("service_hostname");
@@ -29,7 +29,7 @@ describe("debug settings", () => {
   it("renders a read-only report without credentials or paid state", () => {
     const html = renderToStaticMarkup(<DebugSettings setup={setup} />);
 
-    expect(html).toContain('aria-label="HQBase debug report"');
+    expect(html).toContain('aria-label="Sovereign Mail debug report"');
     expect(html).toContain("readOnly");
     expect(html).not.toContain('type="password"');
     expect(html).not.toContain("license");

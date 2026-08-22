@@ -1,6 +1,6 @@
 export type ReleaseManifest = {
-  format: "hqbase-release-v1";
-  product: "hqbase";
+  format: "sovereign-mail-release-v1";
+  product: "sovereign-mail";
   channel: "stable";
   version: string;
   schemaVersion: number;
@@ -12,7 +12,7 @@ export type ReleaseManifest = {
 };
 
 export type UpdateStatus = {
-  product: "hqbase";
+  product: "sovereign-mail";
   installedVersion: string;
   installedSchemaVersion: number;
   channel: "stable";

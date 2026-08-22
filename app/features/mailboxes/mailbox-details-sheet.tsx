@@ -19,6 +19,7 @@ export function MailboxDetailsSheet({
   onAddAddress,
   onManageAccess,
   onOpenChange,
+  onRemoveMailbox,
   onRemoveAddress,
   onToggle
 }: {
@@ -29,6 +30,7 @@ export function MailboxDetailsSheet({
   onAddAddress: (mailbox: Mailbox) => void;
   onManageAccess: (mailbox: Mailbox) => void;
   onOpenChange: (open: boolean) => void;
+  onRemoveMailbox: (mailbox: Mailbox) => void;
   onRemoveAddress: (mailbox: Mailbox, addressId: string) => void;
   onToggle: (mailbox: Mailbox) => void;
 }): React.ReactElement {
@@ -190,6 +192,28 @@ export function MailboxDetailsSheet({
                   ) : null}
                 </div>
               </div>
+
+              {canManage && mailbox ? (
+                <div className="border-t pt-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium">Remove mailbox</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Available only when there is no mail, draft, or provider connection.
+                      </p>
+                    </div>
+                    <Button
+                      className="shrink-0"
+                      size="sm"
+                      type="button"
+                      variant="destructive"
+                      onClick={() => onRemoveMailbox(mailbox)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </details>
         </div>

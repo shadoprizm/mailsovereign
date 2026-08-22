@@ -19,8 +19,10 @@ export const operationRoutes = new Hono<HonoApp>();
 operationRoutes.get("/diagnostics", async (c) => {
   const auth = await requireAuthContext(c.env, c.req.raw);
   requireRole(auth, ["owner", "admin"]);
-  const [schema, counts, operations] = await Promise.all([
-    c.env.DB.prepare("SELECT key, value, updated_at FROM hqbase_schema_state ORDER BY key").all<{
+  const [schema, counts, operations, providers, recovery] = await Promise.all([
+    c.env.DB.prepare(
+      "SELECT key, value, updated_at FROM sovereign_mail_schema_state ORDER BY key"
+    ).all<{
       key: string;
       value: string;
       updated_at: string;
@@ -46,16 +48,66 @@ operationRoutes.get("/diagnostics", async (c) => {
       error_code: string | null;
       started_at: string;
       finished_at: string | null;
+    }>(),
+    c.env.DB.prepare(
+      `SELECT
+       COUNT(*) AS configured,
+       SUM(CASE WHEN is_enabled = 1 AND verified_at IS NOT NULL THEN 1 ELSE 0 END) AS verified,
+       SUM(CASE WHEN is_enabled = 1 AND last_error_code IS NOT NULL THEN 1 ELSE 0 END) AS degraded,
+       SUM(CASE WHEN is_enabled = 1 AND
+         (last_synced_at IS NULL OR last_synced_at < datetime('now', '-15 minutes'))
+         THEN 1 ELSE 0 END) AS stale,
+       MAX(last_synced_at) AS latest_successful_sync
+       FROM provider_connections`
+    ).first<{
+      configured: number;
+      verified: number;
+      degraded: number;
+      stale: number;
+      latest_successful_sync: string | null;
+    }>(),
+    c.env.DB.prepare(
+      `SELECT state, started_at, completed_at FROM update_history
+       WHERE checkpoint_bookmark <> '' AND worker_version <> ''
+       ORDER BY started_at DESC LIMIT 1`
+    ).first<{
+      state: string;
+      started_at: string;
+      completed_at: string | null;
     }>()
   ]);
+  const providerHealth = {
+    configured: providers?.configured ?? 0,
+    verified: providers?.verified ?? 0,
+    degraded: providers?.degraded ?? 0,
+    stale: providers?.stale ?? 0,
+    latestSuccessfulSync: providers?.latest_successful_sync ?? null
+  };
+  const failedOperations = counts?.failed_operations ?? 0;
+  const nextActions = [
+    ...(providerHealth.degraded > 0 ? ["verify_provider_connection"] : []),
+    ...(providerHealth.stale > 0 ? ["run_provider_sync"] : []),
+    ...(failedOperations > 0 ? ["review_failed_operations"] : []),
+    ...(!recovery ? ["record_recovery_point"] : [])
+  ];
   return c.json({
-    ready: schema.results.some((row) => row.key === "product" && row.value === "hqbase"),
+    ready: schema.results.some((row) => row.key === "product" && row.value === "sovereign-mail"),
     schema: schema.results,
     counts: {
       users: counts?.users ?? 0,
       activeMailboxes: counts?.active_mailboxes ?? 0,
-      failedOperations: counts?.failed_operations ?? 0
+      failedOperations
     },
+    providerHealth,
+    recovery: recovery
+      ? {
+          recorded: true,
+          state: recovery.state,
+          recordedAt: recovery.started_at,
+          verifiedAt: recovery.completed_at
+        }
+      : { recorded: false, state: null, recordedAt: null, verifiedAt: null },
+    nextActions,
     operations: operations.results.map((row) => ({
       id: row.id,
       kind: row.kind,
@@ -71,9 +123,9 @@ operationRoutes.get("/diagnostics", async (c) => {
 operationRoutes.post("/integrity-scan", async (c) => {
   const auth = await requireAuthContext(c.env, c.req.raw);
   requireRole(auth, ["owner", "admin"]);
-  if (!c.env.HQBASE_JOBS) throw new Error("HQBASE_JOBS binding is required.");
+  if (!c.env.SOVEREIGN_MAIL_JOBS) throw new Error("SOVEREIGN_MAIL_JOBS binding is required.");
   const id = `integrity:${crypto.randomUUID()}`;
-  await c.env.HQBASE_JOBS.send({ id, kind: "integrity-scan", requestedAt: nowIso() });
+  await c.env.SOVEREIGN_MAIL_JOBS.send({ id, kind: "integrity-scan", requestedAt: nowIso() });
   await recordAudit(c.env.DB, {
     correlationId: c.get("correlationId"),
     actorType: "user",

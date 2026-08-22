@@ -7,6 +7,8 @@ type DraftRow = {
   mailbox_id: string | null;
   reply_to_message_id: string | null;
   forward_of_message_id: string | null;
+  signature_mode: "default" | "specific" | "none";
+  signature_id: string | null;
   from_address: string;
   to_json: string;
   cc_json: string;
@@ -56,6 +58,8 @@ async function mapDraft(db: D1Database, row: DraftRow): Promise<Draft> {
     mailboxId: row.mailbox_id,
     replyToMessageId: row.reply_to_message_id,
     forwardOfMessageId: row.forward_of_message_id,
+    signatureMode: row.signature_mode,
+    signatureId: row.signature_id,
     from: row.from_address,
     to: parse(row.to_json),
     cc: parse(row.cc_json),
@@ -90,6 +94,8 @@ export async function saveDraft(
     mailboxId: string | null;
     replyToMessageId: string | null;
     forwardOfMessageId: string | null;
+    signatureMode?: "default" | "specific" | "none";
+    signatureId?: string | null;
     from: string;
     to: string[];
     cc: string[];
@@ -107,9 +113,20 @@ export async function saveDraft(
     throw new AppError("DRAFT_CONFLICT", "This draft changed in another session.", 409);
   const now = nowIso();
   const nextVersion = current ? current.version + 1 : 1;
+  const signatureMode = input.signatureMode ?? "none";
+  const signatureId = input.signatureId ?? null;
+  if (signatureMode === "specific") {
+    const signature = signatureId
+      ? await db
+          .prepare("SELECT id FROM email_signatures WHERE id = ? AND user_id = ?")
+          .bind(signatureId, userId)
+          .first<{ id: string }>()
+      : null;
+    if (!signature) throw new AppError("SIGNATURE_NOT_FOUND", "Signature not found.", 404);
+  }
   await db
     .prepare(
-      `INSERT INTO drafts (id, user_id, mailbox_id, reply_to_message_id, forward_of_message_id, from_address, to_json, cc_json, bcc_json, subject, text_body, html_body, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET mailbox_id=excluded.mailbox_id, reply_to_message_id=excluded.reply_to_message_id, forward_of_message_id=excluded.forward_of_message_id, from_address=excluded.from_address, to_json=excluded.to_json, cc_json=excluded.cc_json, bcc_json=excluded.bcc_json, subject=excluded.subject, text_body=excluded.text_body, html_body=excluded.html_body, version=excluded.version, updated_at=excluded.updated_at`
+      `INSERT INTO drafts (id, user_id, mailbox_id, reply_to_message_id, forward_of_message_id, signature_mode, signature_id, from_address, to_json, cc_json, bcc_json, subject, text_body, html_body, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET mailbox_id=excluded.mailbox_id, reply_to_message_id=excluded.reply_to_message_id, forward_of_message_id=excluded.forward_of_message_id, signature_mode=excluded.signature_mode, signature_id=excluded.signature_id, from_address=excluded.from_address, to_json=excluded.to_json, cc_json=excluded.cc_json, bcc_json=excluded.bcc_json, subject=excluded.subject, text_body=excluded.text_body, html_body=excluded.html_body, version=excluded.version, updated_at=excluded.updated_at`
     )
     .bind(
       id,
@@ -117,6 +134,8 @@ export async function saveDraft(
       input.mailboxId,
       input.replyToMessageId,
       input.forwardOfMessageId,
+      signatureMode,
+      signatureId,
       input.from,
       JSON.stringify(input.to),
       JSON.stringify(input.cc),

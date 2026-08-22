@@ -93,8 +93,8 @@ export function McpConnectionDetails({
           </p>
         </div>
         <p className="mt-1 text-xs leading-4 text-muted-foreground">
-          After consent, HQBase rechecks this user&apos;s current workspace role and live mailbox
-          grants.
+          After consent, Sovereign Mail rechecks this user&apos;s current workspace role and live
+          mailbox grants.
         </p>
       </section>
 
@@ -139,8 +139,8 @@ export function McpConnectionDetails({
       <section className="flex flex-col gap-1 rounded-lg border px-3 py-2.5 text-xs leading-4 text-muted-foreground">
         <p className="font-medium text-foreground">What happens next</p>
         <p>
-          The client discovers HQBase OAuth 2.1, registers dynamically with PKCE, then opens sign-in
-          and consent. No API token or Cloudflare credential is required.
+          The client discovers Sovereign Mail OAuth 2.1, registers dynamically with PKCE, then opens
+          sign-in and consent. No API token or Cloudflare credential is required.
         </p>
       </section>
     </div>

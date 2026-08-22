@@ -4,7 +4,7 @@ import { buildSeedTimeline } from "./local-seed-timeline.mjs";
 const seedVersion = "local-demo-v1";
 const owner = {
   id: "usr_local_owner",
-  email: "owner@hqbase.test",
+  email: "owner@sovereign-mail.test",
   name: "Local Owner"
 };
 const domain = {

@@ -23,10 +23,10 @@ describe("browser notifications", () => {
       inboxByMailbox: { "mailbox-1": 2 },
       total: 3
     });
-    expect(document.title).toBe("(3) HQBase");
+    expect(document.title).toBe("(3) Sovereign Mail");
     expect(setAppBadge).toHaveBeenCalledWith(3);
     await applyUnreadIndicators({ catchall: 0, inbox: 0, inboxByMailbox: {}, total: 0 });
-    expect(document.title).toBe("HQBase");
+    expect(document.title).toBe("Sovereign Mail");
     expect(clearAppBadge).toHaveBeenCalledOnce();
   });
 

@@ -183,12 +183,12 @@ export function CloudflareReauthenticationForm({
         <DialogHeader>
           <DialogTitle>Sign in again</DialogTitle>
           <DialogDescription>
-            Confirm your HQBase password before authorizing Cloudflare. {description}
+            Confirm your Sovereign Mail password before authorizing Cloudflare. {description}
           </DialogDescription>
         </DialogHeader>
       ) : (
         <p className="text-sm leading-6 text-muted-foreground">
-          Confirm your HQBase password before authorizing Cloudflare.
+          Confirm your Sovereign Mail password before authorizing Cloudflare.
         </p>
       )}
       <form className="flex flex-col gap-4" onSubmit={onSubmit}>

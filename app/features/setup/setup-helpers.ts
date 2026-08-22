@@ -12,9 +12,9 @@ export function buildAppHostname(subdomain: string, domain: string): string {
 export function inferWorkerName(): string {
   const hostname = window.location.hostname;
   if (hostname.endsWith(".workers.dev")) {
-    return hostname.split(".")[0] || "hqbase";
+    return hostname.split(".")[0] || "sovereignmail-app";
   }
-  return "hqbase";
+  return "sovereignmail-app";
 }
 
 export function connectionFingerprint(input: {

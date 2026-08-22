@@ -47,8 +47,15 @@ try {
         }
         ${
           icon.monochrome
-            ? `svg rect, svg path { fill: #fff !important; }
-        svg stop { stop-color: #fff !important; }`
+            ? `svg > rect:first-of-type { display: none; }
+        svg path, svg > rect:not(:first-of-type) {
+          fill: none !important;
+          stroke: #fff !important;
+        }
+        svg circle {
+          fill: #fff !important;
+          stroke: #fff !important;
+        }`
             : ""
         }
       </style>

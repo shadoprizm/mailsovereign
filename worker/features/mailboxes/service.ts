@@ -3,6 +3,7 @@ import { findMailDomainByName } from "../domains/queries";
 
 import {
   deleteMailboxAddress,
+  deleteMailboxWhenEmpty,
   findMailboxByAddress,
   findMailboxById,
   insertMailbox,
@@ -57,7 +58,36 @@ export async function removeMailboxAddress(
   if (!(await deleteMailboxAddress(db, mailboxId, addressId))) {
     throw new AppError(
       "MAILBOX_ADDRESS_NOT_REMOVABLE",
-      "Address not found or is the mailbox primary address.",
+      "Address not found, is the mailbox primary address, or has a provider connection.",
+      409
+    );
+  }
+}
+
+export async function removeEmptyMailbox(
+  db: D1Database,
+  id: string,
+  confirmation: string
+): Promise<void> {
+  const existing = await findMailboxById(db, id);
+  if (!existing) {
+    throw new AppError("MAILBOX_NOT_FOUND", "Mailbox not found.", 404);
+  }
+  if (confirmation !== existing.address) {
+    throw new AppError(
+      "MAILBOX_CONFIRMATION_MISMATCH",
+      "Type the complete primary email address to confirm removal.",
+      400
+    );
+  }
+
+  if (!(await deleteMailboxWhenEmpty(db, id))) {
+    if (!(await findMailboxById(db, id))) {
+      throw new AppError("MAILBOX_NOT_FOUND", "Mailbox not found.", 404);
+    }
+    throw new AppError(
+      "MAILBOX_NOT_EMPTY",
+      "This mailbox has mail history, drafts, or a provider connection. Disable it instead, or remove the provider connection first.",
       409
     );
   }

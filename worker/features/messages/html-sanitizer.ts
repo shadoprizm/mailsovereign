@@ -204,6 +204,16 @@ export function sanitizeQuotedMessageHtml(input: {
   return { html, inlineAttachmentIds: [...inlineAttachmentIds] };
 }
 
+export function sanitizeEmailSignatureHtml(html: string): string {
+  return sanitizeHtml(html.slice(0, 20_000), {
+    ...sanitizerOptions(),
+    allowedTags: allowedTags.filter((tag) => tag !== "img"),
+    transformTags: {
+      a: (tagName, attributes) => ({ tagName, attribs: safeLinkAttributes(attributes) })
+    }
+  });
+}
+
 function sanitizeDisplayHtml(input: {
   allowRemoteImages: boolean;
   attachments: StoredAttachment[];
@@ -289,7 +299,7 @@ function sanitizerOptions(): sanitizeHtml.IOptions {
 function boundedHtml(html: string): string {
   const maxCharacters = 200_000;
   if (html.length <= maxCharacters) return html;
-  return `${html.slice(0, maxCharacters)}<p>[Previous message truncated by HQBase]</p>`;
+  return `${html.slice(0, maxCharacters)}<p>[Previous message truncated by Sovereign Mail]</p>`;
 }
 
 function absoluteRemoteUrl(value: string): string | null {

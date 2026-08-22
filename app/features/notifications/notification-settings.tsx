@@ -69,15 +69,15 @@ export function NotificationSettings({
         </div>
       </div>
       <p className="text-xs leading-relaxed text-muted-foreground">
-        Notifications use a minimal encrypted payload with an unread count and an HQBase route.
-        Sender, recipient, subject, message text, and attachment details are never included.
+        Notifications use a minimal encrypted payload with an unread count and a Sovereign Mail
+        route. Sender, recipient, subject, message text, and attachment details are never included.
         Enabling another device does not disable this one.
       </p>
       {notifications.deviceState === "blocked" ? (
         <Alert>
           <AlertDescription>
-            Notifications are blocked. Allow HQBase in your browser or system notification settings,
-            then return here.
+            Notifications are blocked. Allow Sovereign Mail in your browser or system notification
+            settings, then return here.
           </AlertDescription>
         </Alert>
       ) : null}
@@ -113,7 +113,7 @@ function copyForState(state: NotificationDeviceState): {
     case "unsupported":
       return {
         description:
-          "Install HQBase to the iOS Home Screen, or use a browser that supports Web Push.",
+          "Install Sovereign Mail to the iOS Home Screen, or use a browser that supports Web Push.",
         label: "Unavailable"
       };
     case "unconfigured":

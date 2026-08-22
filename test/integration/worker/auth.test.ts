@@ -12,7 +12,7 @@ import loginEmailDomainMigration from "../../../migrations/0009_login_email_doma
 import { createAuth } from "../../../worker/auth/auth";
 import { migrationStatements } from "./migration-statements";
 
-const origin = "https://hqbase.test";
+const origin = "https://sovereign-mail.test";
 
 describe("Better Auth schema", () => {
   beforeAll(async () => {

@@ -1,6 +1,9 @@
 import { newId, nowIso } from "../../db/client";
 import type { WorkerEnv } from "../../lib/env";
 import { AppError } from "../../lib/errors";
+import { getMailTransportForAddress } from "../../providers/resolver";
+import type { OutboundAttachment } from "../../providers/transport";
+import { recordRecentRecipients } from "../contacts/queries";
 import { draftAttachmentObjects } from "../drafts/queries";
 import { findAddressIdentity } from "../mailboxes/address-queries";
 import { findMailboxForSending } from "../mailboxes/queries";
@@ -34,19 +37,20 @@ export async function sendNewMessage(
     text: input.text
   };
   const attachments = await loadAttachments(env, input.attachmentIds, userId);
-  const sendResult = await env.MAIL_SENDER.send({
+  const transport = await getMailTransportForAddress(env, input.from);
+  const sendResult = await transport.send({
     ...email,
     ...(input.cc.length ? { cc: input.cc } : {}),
     ...(input.bcc.length ? { bcc: input.bcc } : {}),
     ...(input.html ? { html: input.html } : {}),
-    ...(attachments.length ? { attachments: attachments.map(asEmailAttachment) } : {})
+    ...(attachments.length ? { attachments: attachments.map(asOutboundAttachment) } : {})
   });
   const threadId = await createThread(env.DB, input.subject, timestamp);
 
-  return storeSentMessage(env, {
+  const stored = await storeSentMessage(env, {
     ...input,
     inReplyTo: null,
-    messageId: sendResult.messageId,
+    messageId: sendResult.providerMessageId,
     references: [],
     sentAt: timestamp,
     subject: input.subject,
@@ -55,6 +59,12 @@ export async function sendNewMessage(
     draftId: input.draftId ?? null,
     userId: userId ?? null
   });
+  if (userId) {
+    await recordRecentRecipients(env.DB, userId, [...input.to, ...input.cc, ...input.bcc]).catch(
+      () => undefined
+    );
+  }
+  return stored;
 }
 
 export async function replyToMessage(
@@ -86,7 +96,8 @@ export async function replyToMessage(
       : { html: undefined, inlineAttachments: [] };
   const body = buildReplyBody(input, original, quoted.html);
   const outgoingAttachments = [...attachments, ...quoted.inlineAttachments];
-  const sendResult = await env.MAIL_SENDER.send({
+  const transport = await getMailTransportForAddress(env, input.from);
+  const sendResult = await transport.send({
     from: input.from,
     to,
     ...(input.cc.length ? { cc: input.cc } : {}),
@@ -99,11 +110,11 @@ export async function replyToMessage(
     },
     ...(body.html ? { html: body.html } : {}),
     ...(outgoingAttachments.length
-      ? { attachments: outgoingAttachments.map(asEmailAttachment) }
+      ? { attachments: outgoingAttachments.map(asOutboundAttachment) }
       : {})
   });
 
-  return storeSentMessage(env, {
+  const stored = await storeSentMessage(env, {
     from: input.from,
     to,
     cc: input.cc,
@@ -112,7 +123,7 @@ export async function replyToMessage(
     text: body.text,
     ...(body.html ? { html: body.html } : {}),
     inReplyTo: original.messageId ?? original.id,
-    messageId: sendResult.messageId,
+    messageId: sendResult.providerMessageId,
     references,
     sentAt: timestamp,
     threadId: original.threadId,
@@ -120,6 +131,12 @@ export async function replyToMessage(
     draftId: input.draftId ?? null,
     userId: userId ?? null
   });
+  if (userId) {
+    await recordRecentRecipients(env.DB, userId, [...to, ...input.cc, ...input.bcc]).catch(
+      () => undefined
+    );
+  }
+  return stored;
 }
 
 async function ensureActiveMailbox(db: D1Database, address: string): Promise<void> {
@@ -286,20 +303,20 @@ function stripContentIdBrackets(value: string): string {
   return value.trim().replace(/^<|>$/g, "");
 }
 
-function asEmailAttachment(attachment: StoredOutgoingAttachment): EmailAttachment {
+function asOutboundAttachment(attachment: StoredOutgoingAttachment): OutboundAttachment {
   if (attachment.disposition === "inline" && attachment.contentId) {
     return {
       disposition: "inline",
       contentId: attachment.contentId,
       filename: attachment.filename,
-      type: attachment.contentType,
+      contentType: attachment.contentType,
       content: attachment.content
     };
   }
   return {
     disposition: "attachment",
     filename: attachment.filename,
-    type: attachment.contentType,
+    contentType: attachment.contentType,
     content: attachment.content
   };
 }

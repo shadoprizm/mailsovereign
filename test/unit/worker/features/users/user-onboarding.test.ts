@@ -7,7 +7,7 @@ describe("user onboarding", () => {
 
     expect(passwords.size).toBe(32);
     for (const password of passwords) {
-      expect(password).toMatch(/^Hq![A-Za-z0-9_-]{24}$/);
+      expect(password).toMatch(/^Sm![A-Za-z0-9_-]{24}$/);
       expect(password.length).toBeGreaterThanOrEqual(8);
     }
   });

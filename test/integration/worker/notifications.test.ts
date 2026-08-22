@@ -114,7 +114,7 @@ describe("notification persistence", () => {
   });
 
   it("requires an authenticated user and validates subscription endpoints at the API boundary", async () => {
-    const origin = "https://hqbase.test";
+    const origin = "https://sovereign-mail.test";
     const email = "push-user@login.example";
     const auth = createAuth(env, new Request(`${origin}/api/auth/sign-up/email`));
     const signUp = await auth.handler(
