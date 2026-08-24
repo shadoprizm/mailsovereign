@@ -19,6 +19,15 @@ Sovereign Mail backend; they connect to an existing HTTPS deployment and receive
 updates from that deployment. A newer desktop shell is installed from a later canonical GitHub
 release.
 
+The canonical release workflow supports a `desktop-only` scope for a release whose changes are
+limited to the desktop client, packaging, release metadata, documentation, and their tests. This
+scope must run the complete local quality and dry-run gates, install and launch both Ubuntu
+packages, sign the same stable manifest, and verify every published download. It may skip the
+Cloudflare staging lifecycle because it does not change the deployed Worker, web application, or
+database schema. The workflow rejects `desktop-only` when any changed path is outside that explicit
+allowlist. Every other release uses the `full` scope and must pass the disposable Cloudflare
+staging lifecycle before publication.
+
 Custom forks must disable this channel or replace the repository, product identifier, manifest
 format, signing key, and release process together. Pointing a modified build at the official
 Sovereign Mail update channel is unsupported.
