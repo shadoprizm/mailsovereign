@@ -9,4 +9,5 @@ customer-owned R2. Customer-managed provider and Cloudflare credentials must rem
 in Cloudflare secrets. Never commit secrets; use `wrangler secret put` for deployment secrets.
 
 Only releases published by `shadoprizm/mailsovereign` and verified by the Sovereign Mail signing
-key are part of the supported update channel.
+key are part of the supported update channel. This includes Ubuntu desktop artifacts whose exact
+filenames, byte sizes, and SHA-256 digests appear in the signed stable manifest.

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0
+
+- Add a hardened Sovereign Mail desktop client for Ubuntu 22.04 and 24.04 on x86-64.
+- Publish `.deb` and AppImage downloads whose sizes and SHA-256 digests are covered by the signed
+  stable release manifest.
+- Let desktop users select or change their customer-owned HTTPS Sovereign Mail deployment without
+  moving mail or Cloudflare credentials onto the workstation.
+
 ## 1.1.1
 
 - Remove undeclared legacy `HQBASE_*` runtime bindings when installing or updating Sovereign Mail,

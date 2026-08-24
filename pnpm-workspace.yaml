@@ -2,6 +2,7 @@ packages:
   - .
 
 allowBuilds:
+  electron-winstaller: false
   esbuild: true
   sharp: true
   workerd: true

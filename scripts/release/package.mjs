@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { createHash, createPrivateKey, sign } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 
@@ -27,6 +27,40 @@ if (!changelog.includes(`## ${version}\n`))
 
 const output = resolve(root, "release");
 mkdirSync(output, { recursive: true });
+const desktopArtifactFiles = [
+  {
+    arch: "x86_64",
+    filename: `sovereign-mail-desktop-${version}-ubuntu-amd64.deb`,
+    format: "deb"
+  },
+  {
+    arch: "x86_64",
+    filename: `sovereign-mail-desktop-${version}-ubuntu-x86_64.AppImage`,
+    format: "appimage"
+  }
+];
+const desktopArtifacts = desktopArtifactFiles
+  .filter(({ filename }) => existsSync(resolve(output, filename)))
+  .map(({ arch, filename, format }) => {
+    const file = resolve(output, filename);
+    const artifactBytes = readFileSync(file);
+    return {
+      platform: "linux",
+      distribution: "ubuntu",
+      arch,
+      format,
+      filename,
+      url: `https://github.com/shadoprizm/mailsovereign/releases/download/v${version}/${filename}`,
+      sha256: createHash("sha256").update(artifactBytes).digest("hex"),
+      size: statSync(file).size
+    };
+  });
+if (
+  process.env.SOVEREIGN_MAIL_REQUIRE_UBUNTU_DESKTOP === "1" &&
+  desktopArtifacts.length !== desktopArtifactFiles.length
+) {
+  throw new Error("Both Ubuntu desktop artifacts are required for a stable release.");
+}
 const tarFile = resolve(output, `${product}-${version}.tar`);
 const artifactFile = `${tarFile}.gz`;
 execFileSync("git", ["archive", "--format=tar", "--output", tarFile, "HEAD"], { cwd: root });
@@ -48,6 +82,7 @@ const manifest = {
     sha256: createHash("sha256").update(bytes).digest("hex"),
     size: statSync(artifactFile).size
   },
+  ...(desktopArtifacts.length > 0 ? { desktopArtifacts } : {}),
   keyId: "sovereign-mail-release-2026-01"
 };
 const payload = Buffer.from(JSON.stringify(manifest)).toString("base64url");
@@ -63,12 +98,19 @@ writeFileSync(
   resolve(output, `sovereign-mail-${version}.sha256`),
   `${manifest.artifact.sha256}  sovereign-mail-${version}.tar.gz\n`
 );
+if (desktopArtifacts.length > 0) {
+  writeFileSync(
+    resolve(output, `sovereign-mail-desktop-${version}-ubuntu.sha256`),
+    `${desktopArtifacts.map(({ filename, sha256 }) => `${sha256}  ${filename}`).join("\n")}\n`
+  );
+}
 
 console.log(
   JSON.stringify({
     product,
     version,
     artifactFile,
+    desktopArtifacts: desktopArtifacts.map(({ filename }) => resolve(output, filename)),
     manifestFile: resolve(output, `manifest-${version}.json`),
     stableManifestFile: resolve(output, "stable.json")
   })

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; form-action 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Connect Sovereign Mail</title>
+    <link rel="stylesheet" href="./setup.css" />
+  </head>
+  <body>
+    <main>
+      <div class="brand">
+        <img src="./logo.svg" alt="" />
+        <span>Sovereign Mail</span>
+      </div>
+      <section class="card">
+        <h1>Connect your mail</h1>
+        <p>
+          Enter the secure address supplied by your Sovereign Mail operator. Your mail and
+          Cloudflare credentials remain in that deployment.
+        </p>
+        <form>
+          <label for="server-url">Sovereign Mail address</label>
+          <input
+            id="server-url"
+            name="server-url"
+            type="url"
+            inputmode="url"
+            autocomplete="url"
+            placeholder="https://mail.example.com"
+            required
+          />
+          <button type="submit">Open Sovereign Mail</button>
+          <p id="message" role="alert" hidden></p>
+        </form>
+      </section>
+      <p class="privacy">The desktop client stores this server address locally on this computer.</p>
+    </main>
+    <script src="./setup.js"></script>
+  </body>
+</html>

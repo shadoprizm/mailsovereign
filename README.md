@@ -14,6 +14,7 @@ repository. Sovereign Mail does not use HQBase OAuth, releases, signing keys, or
 - Connected IMAP/SMTP providers for accounts hosted elsewhere.
 - Explicitly governed AI actions, with customer-controlled credentials and infrastructure.
 - Backup, restore, diagnostics, and signed updates from the Sovereign Mail release channel.
+- A signed Ubuntu desktop client for connecting to an existing Sovereign Mail deployment.
 
 ## Install on Cloudflare
 
@@ -37,6 +38,13 @@ pnpm sovereign-mail:install -- \
 The installer records every resource it owns in
 `.sovereign-mail/deployments/production/manifest.json`. Review the manifest before allowing a
 reset or destroy operation.
+
+## Ubuntu desktop
+
+Canonical releases include an x86-64 Ubuntu `.deb` and AppImage. The desktop client asks for the
+HTTPS address of an existing Sovereign Mail deployment on first launch; the Cloudflare backend and
+customer data remain in the operator's infrastructure. See
+[docs/DESKTOP_UBUNTU.md](docs/DESKTOP_UBUNTU.md) for installation and verification steps.
 
 ## Local development
 
@@ -82,6 +90,7 @@ Run `pnpm cf:typegen` after changing `wrangler.jsonc`.
 ## Documentation
 
 - [Production installation](docs/INSTALLATION.md)
+- [Ubuntu desktop client](docs/DESKTOP_UBUNTU.md)
 - [Signed releases and updates](docs/UPDATES.md)
 - [IMAP/SMTP operator notes](docs/IMAP_SMTP_CONNECTIONS.md)
 - [Mail deletion and drafts](docs/MAIL_LIFECYCLE.md)

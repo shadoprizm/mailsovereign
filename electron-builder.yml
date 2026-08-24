@@ -1,0 +1,35 @@
+appId: com.mailsovereign.desktop
+productName: Sovereign Mail
+copyright: Copyright © 2026 Sovereign Mail contributors
+electronVersion: 43.4.1
+artifactName: sovereign-mail-desktop-${version}-ubuntu-${arch}.${ext}
+beforeBuild: scripts/release/electron-before-build.mjs
+asar: true
+compression: maximum
+directories:
+  app: desktop
+  output: release
+  buildResources: public
+files:
+  - "**/*"
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  loadBrowserProcessSpecificV8Snapshot: true
+  grantFileProtocolExtraPrivileges: false
+linux:
+  icon: icons/icon-512.png
+  category: Office
+  executableName: sovereign-mail-desktop
+  maintainer: Sovereign Mail contributors <shadoprizm@users.noreply.github.com>
+  syncDesktopName: true
+  synopsis: Desktop client for customer-owned Sovereign Mail deployments
+  description: Connect securely to an existing Sovereign Mail deployment from Ubuntu.
+deb:
+  packageName: sovereign-mail-desktop
+  category: mail
+  priority: optional
