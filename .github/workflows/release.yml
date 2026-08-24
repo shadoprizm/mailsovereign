@@ -2,6 +2,15 @@ name: Signed Sovereign Mail release
 
 on:
   workflow_dispatch:
+    inputs:
+      release_scope:
+        description: Release validation scope
+        required: true
+        default: full
+        type: choice
+        options:
+          - full
+          - desktop-only
 
 permissions:
   contents: read
@@ -27,6 +36,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v6
         with:
           version: 11.7.0
@@ -81,6 +92,45 @@ jobs:
           echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
           echo "previous_tag=$previous_tag" >> "$GITHUB_OUTPUT"
           echo "version=$release_version" >> "$GITHUB_OUTPUT"
+      - name: Validate desktop-only release scope
+        if: inputs.release_scope == 'desktop-only'
+        env:
+          PREVIOUS_TAG: ${{ steps.metadata.outputs.previous_tag }}
+        run: |
+          test -n "$PREVIOUS_TAG" || {
+            echo "A desktop-only release requires an existing stable release." >&2
+            exit 1
+          }
+          mapfile -t changed_paths < <(git diff --name-only "$PREVIOUS_TAG"...HEAD)
+          invalid=0
+          for path in "${changed_paths[@]}"; do
+            case "$path" in
+              .github/workflows/ci.yml | \
+              .github/workflows/release.yml | \
+              CHANGELOG.md | \
+              README.md | \
+              SECURITY.md | \
+              desktop/* | \
+              docs/DESKTOP_UBUNTU.md | \
+              docs/PRODUCT_IDENTITY.md | \
+              docs/UPDATES.md | \
+              electron-builder.yml | \
+              package.json | \
+              pnpm-lock.yaml | \
+              pnpm-workspace.yaml | \
+              scripts/release/electron-before-build.mjs | \
+              scripts/release/manifest.mjs | \
+              scripts/release/package.mjs | \
+              test/unit/desktop/* | \
+              test/unit/scripts/deploy.test.mjs)
+                ;;
+              *)
+                echo "Desktop-only scope does not permit changed path: $path" >&2
+                invalid=1
+                ;;
+            esac
+          done
+          test "$invalid" -eq 0
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm deploy:dry-run
@@ -152,6 +202,7 @@ jobs:
 
   staging:
     needs: candidate
+    if: inputs.release_scope == 'full'
     runs-on: ubuntu-latest
     environment: sovereign-mail-staging
     timeout-minutes: 35
@@ -310,6 +361,10 @@ jobs:
 
   publish:
     needs: [candidate, staging]
+    if: >-
+      ${{ always() && needs.candidate.result == 'success' &&
+          (needs.staging.result == 'success' ||
+           (inputs.release_scope == 'desktop-only' && needs.staging.result == 'skipped')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -388,7 +443,10 @@ jobs:
 
   cleanup-failed-draft:
     needs: [candidate, staging]
-    if: ${{ always() && needs.candidate.outputs.draft_created == 'true' && needs.staging.result != 'success' }}
+    if: >-
+      ${{ always() && needs.candidate.outputs.draft_created == 'true' &&
+          needs.staging.result != 'success' &&
+          (inputs.release_scope != 'desktop-only' || needs.staging.result != 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
