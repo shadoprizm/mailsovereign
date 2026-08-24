@@ -19,7 +19,7 @@ electronFuses:
   enableNodeCliInspectArguments: false
   enableEmbeddedAsarIntegrityValidation: true
   onlyLoadAppFromAsar: true
-  loadBrowserProcessSpecificV8Snapshot: true
+  loadBrowserProcessSpecificV8Snapshot: false
   grantFileProtocolExtraPrivileges: false
 linux:
   icon: icons/icon-512.png
@@ -31,5 +31,5 @@ linux:
   description: Connect securely to an existing Sovereign Mail deployment from Ubuntu.
 deb:
   packageName: sovereign-mail-desktop
-  category: mail
+  packageCategory: mail
   priority: optional

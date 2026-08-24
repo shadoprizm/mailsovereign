@@ -66,6 +66,9 @@ jobs:
           test -s "$deb"
           test -s "$appimage"
           dpkg-deb --info "$deb"
+          test "$(dpkg-deb --field "$deb" Package)" = "sovereign-mail-desktop"
+          test "$(dpkg-deb --field "$deb" Architecture)" = "amd64"
+          test "$(dpkg-deb --field "$deb" Section)" = "mail"
           sudo apt-get install --yes "./$deb"
           xvfb-run --auto-servernum sovereign-mail-desktop --smoke-test
           chmod +x "$appimage"
