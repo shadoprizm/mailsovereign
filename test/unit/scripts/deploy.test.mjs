@@ -31,7 +31,19 @@ describe("Sovereign Mail release deployment", () => {
       channel: "stable",
       version: "1.2.3",
       minVersion: "1.2.0",
-      artifact: { sha256: "a".repeat(64), size: 1 }
+      artifact: { sha256: "a".repeat(64), size: 1 },
+      desktopArtifacts: [
+        {
+          platform: "linux",
+          distribution: "ubuntu",
+          arch: "x86_64",
+          format: "deb",
+          filename: "sovereign-mail-desktop-1.2.3-ubuntu-amd64.deb",
+          url: "https://github.com/shadoprizm/mailsovereign/releases/download/v1.2.3/sovereign-mail-desktop-1.2.3-ubuntu-amd64.deb",
+          sha256: "b".repeat(64),
+          size: 2
+        }
+      ]
     };
     const payload = Buffer.from(JSON.stringify(manifest)).toString("base64url");
     const envelope = {
@@ -44,6 +56,20 @@ describe("Sovereign Mail release deployment", () => {
     expect(() => verifyManifest({ ...envelope, signature: invalidSignature }, encoded)).toThrow(
       "signature"
     );
+
+    const incompatiblePayload = Buffer.from(
+      JSON.stringify({
+        ...manifest,
+        desktopArtifacts: [{ ...manifest.desktopArtifacts[0], sha256: "invalid" }]
+      })
+    ).toString("base64url");
+    const incompatibleEnvelope = {
+      payload: incompatiblePayload,
+      signature: sign(null, Buffer.from(incompatiblePayload, "base64url"), privateKey).toString(
+        "base64url"
+      )
+    };
+    expect(() => verifyManifest(incompatibleEnvelope, encoded)).toThrow("incompatible");
   });
   it("selects only newer semantic releases", () => {
     expect(compareVersions("0.2.0", "0.1.9")).toBeGreaterThan(0);

@@ -1,0 +1,14 @@
+{
+  "name": "sovereign-mail-desktop",
+  "version": "1.2.0",
+  "description": "Ubuntu desktop client for customer-owned Sovereign Mail deployments",
+  "license": "AGPL-3.0-only",
+  "author": {
+    "name": "Sovereign Mail contributors",
+    "email": "shadoprizm@users.noreply.github.com"
+  },
+  "homepage": "https://mailsovereign.com",
+  "desktopName": "sovereign-mail-desktop",
+  "type": "module",
+  "main": "main.mjs"
+}

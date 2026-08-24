@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   candidate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     environment: release
     timeout-minutes: 25
     permissions:
@@ -84,6 +84,22 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm deploy:dry-run
+      - name: Build Ubuntu desktop packages
+        run: pnpm desktop:package:ubuntu
+      - name: Inspect and launch the Ubuntu packages
+        run: |
+          deb="release/sovereign-mail-desktop-${SOVEREIGN_MAIL_RELEASE_VERSION}-ubuntu-amd64.deb"
+          appimage="release/sovereign-mail-desktop-${SOVEREIGN_MAIL_RELEASE_VERSION}-ubuntu-x86_64.AppImage"
+          test -s "$deb"
+          test -s "$appimage"
+          dpkg-deb --info "$deb"
+          test "$(dpkg-deb --field "$deb" Package)" = "sovereign-mail-desktop"
+          test "$(dpkg-deb --field "$deb" Architecture)" = "amd64"
+          test "$(dpkg-deb --field "$deb" Section)" = "mail"
+          sudo apt-get install --yes "./$deb"
+          xvfb-run --auto-servernum sovereign-mail-desktop --smoke-test
+          chmod +x "$appimage"
+          xvfb-run --auto-servernum "$appimage" --appimage-extract-and-run --no-sandbox --smoke-test
       - name: Verify signing key
         env:
           SOVEREIGN_MAIL_RELEASE_PRIVATE_KEY: ${{ secrets.SOVEREIGN_MAIL_RELEASE_PRIVATE_KEY }}
@@ -91,6 +107,7 @@ jobs:
       - name: Package and sign candidate
         env:
           SOVEREIGN_MAIL_RELEASE_PRIVATE_KEY: ${{ secrets.SOVEREIGN_MAIL_RELEASE_PRIVATE_KEY }}
+          SOVEREIGN_MAIL_REQUIRE_UBUNTU_DESKTOP: "1"
         run: pnpm release:package
       - name: Extract release notes
         run: |
@@ -109,7 +126,11 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.metadata.outputs.artifact_name }}
-          path: release/
+          path: |
+            release/sovereign-mail-${{ steps.metadata.outputs.version }}.tar.gz
+            release/sovereign-mail-${{ steps.metadata.outputs.version }}.sha256
+            release/manifest-${{ steps.metadata.outputs.version }}.json
+            release/stable.json
           if-no-files-found: error
           retention-days: 7
       - name: Create draft GitHub Release
@@ -122,6 +143,9 @@ jobs:
             --notes-file release/notes.md \
             "release/sovereign-mail-${SOVEREIGN_MAIL_RELEASE_VERSION}.tar.gz" \
             "release/sovereign-mail-${SOVEREIGN_MAIL_RELEASE_VERSION}.sha256" \
+            "release/sovereign-mail-desktop-${SOVEREIGN_MAIL_RELEASE_VERSION}-ubuntu-amd64.deb" \
+            "release/sovereign-mail-desktop-${SOVEREIGN_MAIL_RELEASE_VERSION}-ubuntu-x86_64.AppImage" \
+            "release/sovereign-mail-desktop-${SOVEREIGN_MAIL_RELEASE_VERSION}-ubuntu.sha256" \
             "release/manifest-${SOVEREIGN_MAIL_RELEASE_VERSION}.json" \
             "release/stable.json"
           echo "created=true" >> "$GITHUB_OUTPUT"
@@ -331,6 +355,34 @@ jobs:
             if (createHash("sha256").update(bytes).digest("hex") !== manifest.artifact.sha256 ||
                 statSync("/tmp/sovereign-mail.tar.gz").size !== manifest.artifact.size) {
               throw new Error("Published artifact does not match the signed manifest.");
+            }
+            const expectedDesktopArtifacts = new Map([
+              ["deb", `sovereign-mail-desktop-${version}-ubuntu-amd64.deb`],
+              ["appimage", `sovereign-mail-desktop-${version}-ubuntu-x86_64.AppImage`]
+            ]);
+            if (!Array.isArray(manifest.desktopArtifacts) ||
+                manifest.desktopArtifacts.length !== expectedDesktopArtifacts.size) {
+              throw new Error("Published manifest does not contain both Ubuntu desktop artifacts.");
+            }
+            const download = async (url) => {
+              for (let attempt = 1; attempt <= 30; attempt += 1) {
+                const response = await fetch(url);
+                if (response.ok) return Buffer.from(await response.arrayBuffer());
+                if (attempt === 30) throw new Error(`Desktop artifact download failed (${response.status}).`);
+                await new Promise((resolve) => setTimeout(resolve, 2000));
+              }
+            };
+            for (const artifact of manifest.desktopArtifacts) {
+              if (expectedDesktopArtifacts.get(artifact.format) !== artifact.filename ||
+                  artifact.platform !== "linux" || artifact.distribution !== "ubuntu" ||
+                  artifact.arch !== "x86_64") {
+                throw new Error("Published Ubuntu desktop artifact metadata is invalid.");
+              }
+              const artifactBytes = await download(artifact.url);
+              if (artifactBytes.length !== artifact.size ||
+                  createHash("sha256").update(artifactBytes).digest("hex") !== artifact.sha256) {
+                throw new Error(`Published desktop artifact ${artifact.filename} failed integrity verification.`);
+              }
             }
           '
 

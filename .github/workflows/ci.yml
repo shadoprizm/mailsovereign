@@ -44,3 +44,32 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm deploy:dry-run
+
+  desktop-ubuntu:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm desktop:package:ubuntu
+      - name: Inspect and launch the Ubuntu packages
+        run: |
+          version="$(node --input-type=module -e 'import packageJson from "./package.json" with { type: "json" }; process.stdout.write(packageJson.version)')"
+          deb="release/sovereign-mail-desktop-${version}-ubuntu-amd64.deb"
+          appimage="release/sovereign-mail-desktop-${version}-ubuntu-x86_64.AppImage"
+          test -s "$deb"
+          test -s "$appimage"
+          dpkg-deb --info "$deb"
+          test "$(dpkg-deb --field "$deb" Package)" = "sovereign-mail-desktop"
+          test "$(dpkg-deb --field "$deb" Architecture)" = "amd64"
+          test "$(dpkg-deb --field "$deb" Section)" = "mail"
+          sudo apt-get install --yes "./$deb"
+          xvfb-run --auto-servernum sovereign-mail-desktop --smoke-test
+          chmod +x "$appimage"
+          xvfb-run --auto-servernum "$appimage" --appimage-extract-and-run --no-sandbox --smoke-test

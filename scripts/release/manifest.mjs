@@ -68,6 +68,24 @@ export function verifyManifest(envelope, publicKeyBase64 = publicKey) {
     throw new Error("Release manifest signature is invalid.");
   }
   const manifest = JSON.parse(Buffer.from(envelope.payload, "base64url").toString("utf8"));
+  const desktopArtifactsAreValid =
+    manifest.desktopArtifacts === undefined ||
+    (Array.isArray(manifest.desktopArtifacts) &&
+      manifest.desktopArtifacts.length > 0 &&
+      manifest.desktopArtifacts.every(
+        (artifact) =>
+          artifact?.platform === "linux" &&
+          artifact?.distribution === "ubuntu" &&
+          artifact?.arch === "x86_64" &&
+          ["deb", "appimage"].includes(artifact?.format) &&
+          typeof artifact?.filename === "string" &&
+          typeof artifact?.url === "string" &&
+          /^[a-f0-9]{64}$/.test(artifact?.sha256) &&
+          Number.isInteger(artifact?.size) &&
+          artifact.size > 0
+      ) &&
+      new Set(manifest.desktopArtifacts.map(({ format }) => format)).size ===
+        manifest.desktopArtifacts.length);
   if (
     manifest.format !== "sovereign-mail-release-v1" ||
     manifest.product !== "sovereign-mail" ||
@@ -76,7 +94,8 @@ export function verifyManifest(envelope, publicKeyBase64 = publicKey) {
     !/^\d+\.\d+\.\d+/.test(manifest.minVersion) ||
     !/^[a-f0-9]{64}$/.test(manifest.artifact?.sha256) ||
     !Number.isInteger(manifest.artifact?.size) ||
-    manifest.artifact.size <= 0
+    manifest.artifact.size <= 0 ||
+    !desktopArtifactsAreValid
   ) {
     throw new Error("Release manifest is incompatible.");
   }
