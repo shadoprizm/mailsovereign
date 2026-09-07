@@ -55,6 +55,12 @@ describe("Sovereign Mail installation resources", () => {
       CLOUDFLARE_OAUTH_MODE: "customer"
     });
     expect(config.observability.logs.invocation_logs).toBe(false);
+    expect(config.secrets.required).toEqual([
+      "BETTER_AUTH_SECRET",
+      "PROVIDER_CREDENTIAL_KEY",
+      "VAPID_PUBLIC_KEY",
+      "VAPID_PRIVATE_KEY"
+    ]);
   });
 
   it("routes Worker-owned paths ahead of the single-page-application fallback", () => {

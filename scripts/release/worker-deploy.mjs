@@ -7,6 +7,13 @@ import { createRestrictedDirectory } from "../secure-directory.mjs";
 import { isWorkerNotFound } from "./active-version.mjs";
 import { attemptRun, emitCommandOutput, run } from "./command.mjs";
 
+export const requiredWorkerSecrets = Object.freeze([
+  "BETTER_AUTH_SECRET",
+  "PROVIDER_CREDENTIAL_KEY",
+  "VAPID_PUBLIC_KEY",
+  "VAPID_PRIVATE_KEY"
+]);
+
 export function deploySource(cwd, options = {}) {
   const execute = options.run ?? run;
   const attempt = options.attempt ?? attemptRun;
@@ -33,11 +40,7 @@ export function deploySource(cwd, options = {}) {
   );
   let missingSecrets;
   try {
-    missingSecrets = missingRequiredSecrets(inspection, [
-      "BETTER_AUTH_SECRET",
-      "VAPID_PUBLIC_KEY",
-      "VAPID_PRIVATE_KEY"
-    ]);
+    missingSecrets = missingRequiredSecrets(inspection, requiredWorkerSecrets);
   } catch (error) {
     emitCommandOutput(inspection);
     throw error;
@@ -54,8 +57,8 @@ export function deploySource(cwd, options = {}) {
     );
   }
 
-  // The file below holds the auth secret and VAPID keys for the duration of one deploy, so the
-  // directory has to exclude other accounts before anything is written into it.
+  // The file below holds installation secrets for the duration of one deploy, so the directory
+  // has to exclude other accounts before anything is written into it.
   const workspace = createRestrictedDirectory("sovereign-mail-secrets-");
   const secretsFile = resolve(workspace, "secrets.json");
   try {
@@ -64,6 +67,12 @@ export function deploySource(cwd, options = {}) {
       const configuredSecret = process.env.SOVEREIGN_MAIL_AUTH_SECRET;
       const bytes = configuredSecret ? null : (options.randomBytes ?? randomBytes)(32);
       secrets.BETTER_AUTH_SECRET = configuredSecret ?? bytes?.toString("base64url");
+    }
+    if (missingSecrets.includes("PROVIDER_CREDENTIAL_KEY")) {
+      const configuredKey = process.env.SOVEREIGN_MAIL_PROVIDER_CREDENTIAL_KEY;
+      secrets.PROVIDER_CREDENTIAL_KEY =
+        (configuredKey && validateProviderCredentialKey(configuredKey)) ??
+        (options.randomBytes ?? randomBytes)(32).toString("base64");
     }
     if (
       missingSecrets.includes("VAPID_PUBLIC_KEY") ||
@@ -105,6 +114,15 @@ export function missingRequiredSecrets(result, secretNames) {
   }
   if (isWorkerNotFound(result)) return [...secretNames];
   throw result.error ?? new Error(`wrangler secret list exited with status ${result.status}.`);
+}
+
+export function validateProviderCredentialKey(value) {
+  const trimmed = value.trim();
+  const bytes = Buffer.from(trimmed, "base64");
+  if (!trimmed || bytes.byteLength !== 32 || bytes.toString("base64") !== trimmed) {
+    throw new Error("SOVEREIGN_MAIL_PROVIDER_CREDENTIAL_KEY must be exactly 32 base64 bytes.");
+  }
+  return trimmed;
 }
 
 export function executeSql(cwd, command, options = {}) {

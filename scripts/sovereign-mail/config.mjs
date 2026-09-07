@@ -45,7 +45,12 @@ export function createWranglerConfig(manifest) {
       binding: manifest.ai?.binding ?? "AI"
     },
     secrets: {
-      required: ["BETTER_AUTH_SECRET"]
+      required: [
+        "BETTER_AUTH_SECRET",
+        "PROVIDER_CREDENTIAL_KEY",
+        "VAPID_PUBLIC_KEY",
+        "VAPID_PRIVATE_KEY"
+      ]
     },
     d1_databases: [
       {

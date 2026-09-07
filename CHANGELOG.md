@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.1
+
+- Generate and preserve the provider credential-encryption key during signed installs and updates,
+  and make `doctor` fail clearly when any core Worker secret is missing.
+- Remediate production dependency advisories and give Windows integration setup hooks enough time
+  to complete reliably in CI.
+- Correct provider routing, OAuth callback, installation, and recovery documentation so public
+  claims match the shipped product boundary.
+
 ## 1.2.0
 
 - Add a hardened Sovereign Mail desktop client for Ubuntu 22.04 and 24.04 on x86-64.

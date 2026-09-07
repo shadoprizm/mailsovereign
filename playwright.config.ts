@@ -8,10 +8,8 @@ if (!baseURL && process.env.CI) {
     "SOVEREIGN_MAIL_STAGING_URL is required. Sovereign Mail E2E runs only in staging."
   );
 }
-if (baseURL && process.env.CI && (!accessClientId || !accessClientSecret)) {
-  throw new Error(
-    "Cloudflare Access service-token credentials are required for Sovereign Mail staging E2E."
-  );
+if (Boolean(accessClientId) !== Boolean(accessClientSecret)) {
+  throw new Error("Configure both Cloudflare Access service-token values or neither.");
 }
 
 export default defineConfig({
