@@ -77,6 +77,8 @@ Install options:
   --oauth-mode <mode>    Customer-managed OAuth only; defaults to customer.
   --oauth-client-id <id> Customer OAuth client ID. Required with --auth-url.
   SOVEREIGN_MAIL_AUTH_SECRET     Preserve an existing Better Auth secret without exposing it in argv.
+  SOVEREIGN_MAIL_PROVIDER_CREDENTIAL_KEY
+                          Preserve an existing 32-byte base64 provider key without exposing it in argv.
   --auth-secret <value>  Compatibility fallback. Prefer SOVEREIGN_MAIL_AUTH_SECRET.
   --skip-build           Skip pnpm build.
   --skip-deploy          Create resources/config/migrations without deploying Worker.

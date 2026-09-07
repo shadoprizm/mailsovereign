@@ -2,7 +2,7 @@ import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   inspectActiveRelease,
   isDeployButtonBootstrap,
@@ -16,13 +16,19 @@ import {
   missingRequiredSecrets,
   needsInitialAuthSecret,
   normalizeConfig,
+  requiredWorkerSecrets,
   sovereignMailReleaseTag,
+  validateProviderCredentialKey,
   verifyManifest,
   workerNameFromConfig
 } from "../../../scripts/release/deploy.mjs";
 import { foreignTrustees } from "../../../scripts/secure-directory.mjs";
 
 describe("Sovereign Mail release deployment", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("verifies product-bound manifests", () => {
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
     const manifest = {
@@ -265,7 +271,7 @@ describe("Sovereign Mail release deployment", () => {
     );
     expect(readFileSync("scripts/release/deploy.mjs", "utf8")).not.toContain('"--keep-vars"');
   });
-  it("generates masked auth and Web Push secrets when the first Workers Build needs them", () => {
+  it("generates masked installation secrets when the first Workers Build needs them", () => {
     let secretFile;
     deploySource("/customer/repo", {
       workersCi: true,
@@ -303,6 +309,7 @@ describe("Sovereign Mail release deployment", () => {
         }
         expect(JSON.parse(readFileSync(secretFile, "utf8"))).toEqual({
           BETTER_AUTH_SECRET: Buffer.alloc(32, 7).toString("base64url"),
+          PROVIDER_CREDENTIAL_KEY: Buffer.alloc(32, 7).toString("base64"),
           VAPID_PUBLIC_KEY: "generated-public-key",
           VAPID_PRIVATE_KEY: "generated-private-key"
         });
@@ -319,6 +326,7 @@ describe("Sovereign Mail release deployment", () => {
         status: 0,
         stdout: JSON.stringify([
           { name: "BETTER_AUTH_SECRET", type: "secret_text" },
+          { name: "PROVIDER_CREDENTIAL_KEY", type: "secret_text" },
           { name: "VAPID_PUBLIC_KEY", type: "secret_text" },
           { name: "VAPID_PRIVATE_KEY", type: "secret_text" }
         ]),
@@ -336,9 +344,9 @@ describe("Sovereign Mail release deployment", () => {
           stdout: JSON.stringify([{ name: "BETTER_AUTH_SECRET", type: "secret_text" }]),
           stderr: ""
         },
-        ["BETTER_AUTH_SECRET", "VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY"]
+        requiredWorkerSecrets
       )
-    ).toEqual(["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY"]);
+    ).toEqual(["PROVIDER_CREDENTIAL_KEY", "VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY"]);
     expect(
       needsInitialAuthSecret(
         {
@@ -363,7 +371,10 @@ describe("Sovereign Mail release deployment", () => {
       workerName: "sovereign-mail-existing",
       attempt: () => ({
         status: 0,
-        stdout: JSON.stringify([{ name: "BETTER_AUTH_SECRET", type: "secret_text" }]),
+        stdout: JSON.stringify([
+          { name: "BETTER_AUTH_SECRET", type: "secret_text" },
+          { name: "PROVIDER_CREDENTIAL_KEY", type: "secret_text" }
+        ]),
         stderr: ""
       }),
       generateVapidKeys: () => ({
@@ -376,6 +387,38 @@ describe("Sovereign Mail release deployment", () => {
         expect(JSON.parse(readFileSync(secretFile, "utf8"))).toEqual({
           VAPID_PUBLIC_KEY: "upgrade-public-key",
           VAPID_PRIVATE_KEY: "upgrade-private-key"
+        });
+      }
+    });
+  });
+  it("validates a preserved provider credential key without exposing it", () => {
+    expect(() =>
+      validateProviderCredentialKey(Buffer.alloc(32, 9).toString("base64"))
+    ).not.toThrow();
+    expect(() => validateProviderCredentialKey("not-a-32-byte-base64-key")).toThrow(
+      "exactly 32 base64 bytes"
+    );
+  });
+  it("uses the explicitly preserved provider key without rotating other secrets", () => {
+    const providerKey = Buffer.alloc(32, 11).toString("base64");
+    vi.stubEnv("SOVEREIGN_MAIL_PROVIDER_CREDENTIAL_KEY", ` ${providerKey} `);
+
+    deploySource("/customer/repo", {
+      workersCi: true,
+      workerName: "sovereign-mail-existing",
+      attempt: () => ({
+        status: 0,
+        stdout: JSON.stringify([
+          { name: "BETTER_AUTH_SECRET", type: "secret_text" },
+          { name: "VAPID_PUBLIC_KEY", type: "secret_text" },
+          { name: "VAPID_PRIVATE_KEY", type: "secret_text" }
+        ]),
+        stderr: ""
+      }),
+      run: (_command, args) => {
+        const secretFile = args.at(-1);
+        expect(JSON.parse(readFileSync(secretFile, "utf8"))).toEqual({
+          PROVIDER_CREDENTIAL_KEY: providerKey
         });
       }
     });
@@ -409,6 +452,7 @@ describe("Sovereign Mail release deployment", () => {
   it("keeps the generated secret out of Deploy to Cloudflare form metadata", () => {
     const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
     expect(packageJson.cloudflare.bindings).not.toHaveProperty("BETTER_AUTH_SECRET");
+    expect(packageJson.cloudflare.bindings).not.toHaveProperty("PROVIDER_CREDENTIAL_KEY");
     expect(packageJson.cloudflare.bindings).not.toHaveProperty("VAPID_PRIVATE_KEY");
     expect(readFileSync(".env.example", "utf8")).not.toMatch(/^BETTER_AUTH_SECRET=/m);
     expect(readFileSync(".env.example", "utf8")).not.toMatch(/^VAPID_PRIVATE_KEY=/m);

@@ -1,16 +1,19 @@
 # IMAP/SMTP connections
 
 This foundation connects an existing mailbox provider to Sovereign Mail without moving DNS or MX.
-It uses ImapFlow for IMAP and Nodemailer for SMTP under the Worker's existing `nodejs_compat` flag.
+It uses bounded Cloudflare-native TCP socket clients for IMAP and SMTP under the Worker's existing
+`nodejs_compat` flag.
 
 ## Credential sealing
 
-Before creating the first connection, generate the encryption key outside chat and install it as a
-Worker secret:
+Fresh installations generate the encryption key as a Worker secret without printing it. When
+repairing an older deployment that predates automatic provisioning, generate the key outside chat
+and target the selected deployment configuration explicitly:
 
 ```sh
 openssl rand -base64 32
-wrangler secret put PROVIDER_CREDENTIAL_KEY
+pnpm exec wrangler secret put PROVIDER_CREDENTIAL_KEY \
+  --config .sovereign-mail/deployments/production/wrangler.jsonc
 ```
 
 For local development only, place the same value in `.dev.vars` as
@@ -33,7 +36,8 @@ require recent authentication.
 
 Connection creation is storage-only. It does not contact the configured hosts. Verification and
 synchronization are explicit network operations and are audited without credential, address, or
-message content.
+message content. A verified, enabled connection also becomes the fail-closed SMTP route for its
+exact mailbox address.
 
 ## Synchronization bounds
 
@@ -64,6 +68,4 @@ creation.
 - Sent, Drafts, Trash, Junk, Archive, flag, deletion, and move synchronization are not executed yet.
 - SMTP verification does not prove delivery. A live delivery test remains required before claiming
   that outbound mail works.
-- Existing outbound application mail still uses the Cloudflare transport; provider-based outbound
-  routing is not enabled.
 - No MXRoute hostnames or credentials are assumed by production code.

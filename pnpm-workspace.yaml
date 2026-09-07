@@ -10,8 +10,9 @@ allowBuilds:
 overrides:
   '@better-auth/core': 1.7.0-rc.2
   '@hono/node-server': 2.0.12
-  fast-uri: 3.1.5
+  fast-uri: 3.1.6
   postcss: 8.5.26
+  qs: 6.16.0
 
 minimumReleaseAgeExclude:
   - '@cloudflare/workers-types@5.20260711.1'

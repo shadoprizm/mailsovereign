@@ -13,7 +13,8 @@ repository. Sovereign Mail does not use HQBase OAuth, releases, signing keys, or
 - Cloudflare Email Routing and Email Sending integration.
 - Connected IMAP/SMTP providers for accounts hosted elsewhere.
 - Explicitly governed AI actions, with customer-controlled credentials and infrastructure.
-- Backup, restore, diagnostics, and signed updates from the Sovereign Mail release channel.
+- D1/Worker recovery checkpoints, R2 inventory, diagnostics, and signed updates from the Sovereign
+  Mail release channel.
 - A signed Ubuntu desktop client for connecting to an existing Sovereign Mail deployment.
 
 ## Install on Cloudflare
@@ -25,9 +26,9 @@ client; there is no shared upstream relay or client identity.
 The short form is:
 
 ```sh
-git clone https://github.com/shadoprizm/mailsovereign.git
+git clone --branch v1.2.1 --depth 1 https://github.com/shadoprizm/mailsovereign.git
 cd mailsovereign
-pnpm install
+pnpm install --frozen-lockfile
 pnpm sovereign-mail:install -- \
   --name production \
   --auth-url https://mail.example.com \
@@ -94,6 +95,7 @@ Run `pnpm cf:typegen` after changing `wrangler.jsonc`.
 - [Signed releases and updates](docs/UPDATES.md)
 - [IMAP/SMTP operator notes](docs/IMAP_SMTP_CONNECTIONS.md)
 - [Mail deletion and drafts](docs/MAIL_LIFECYCLE.md)
+- [Recovery checkpoints and R2 boundary](docs/RECOVERY.md)
 - [Product direction](VISION.md)
 - [Security policy](SECURITY.md)
 

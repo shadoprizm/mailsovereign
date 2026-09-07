@@ -18,6 +18,8 @@ import {
   executeSql,
   missingRequiredSecrets,
   needsInitialAuthSecret,
+  requiredWorkerSecrets,
+  validateProviderCredentialKey,
   workerNameFromConfig
 } from "./worker-deploy.mjs";
 
@@ -31,7 +33,9 @@ export {
   missingRequiredSecrets,
   needsInitialAuthSecret,
   normalizeConfig,
+  requiredWorkerSecrets,
   sovereignMailReleaseTag,
+  validateProviderCredentialKey,
   verifyManifest,
   workerNameFromConfig
 };

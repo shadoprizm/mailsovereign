@@ -216,6 +216,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       SOVEREIGN_MAIL_STAGING_ACCESS_CLIENT_ID: ${{ secrets.SOVEREIGN_MAIL_E2E_ACCESS_CLIENT_ID }}
       SOVEREIGN_MAIL_STAGING_ACCESS_CLIENT_SECRET: ${{ secrets.SOVEREIGN_MAIL_E2E_ACCESS_CLIENT_SECRET }}
+      SOVEREIGN_MAIL_STAGING_APP_HOSTNAME: ${{ secrets.SOVEREIGN_MAIL_E2E_APP_HOSTNAME }}
       SOVEREIGN_MAIL_STAGING_EMAIL_DOMAIN: ${{ secrets.SOVEREIGN_MAIL_E2E_EMAIL_DOMAIN }}
       SOVEREIGN_MAIL_STAGING_OWNER_EMAIL: ${{ secrets.SOVEREIGN_MAIL_E2E_OWNER_EMAIL }}
       SOVEREIGN_MAIL_STAGING_OWNER_PASSWORD: ${{ secrets.SOVEREIGN_MAIL_E2E_OWNER_PASSWORD }}
@@ -224,6 +225,32 @@ jobs:
       SOVEREIGN_MAIL_STAGING_URL: https://${{ secrets.SOVEREIGN_MAIL_E2E_APP_HOSTNAME }}
       DEPLOYMENT_NAME: release-${{ github.run_id }}
     steps:
+      - name: Validate staging environment
+        run: |
+          required=(
+            CLOUDFLARE_ACCOUNT_ID
+            CLOUDFLARE_API_TOKEN
+            SOVEREIGN_MAIL_STAGING_APP_HOSTNAME
+            SOVEREIGN_MAIL_STAGING_EMAIL_DOMAIN
+            SOVEREIGN_MAIL_STAGING_OWNER_EMAIL
+            SOVEREIGN_MAIL_STAGING_OWNER_PASSWORD
+            SOVEREIGN_MAIL_STAGING_OAUTH_CLIENT_ID
+          )
+          missing=0
+          for variable in "${required[@]}"; do
+            if test -z "${!variable}"; then
+              echo "Missing sovereign-mail-staging configuration: $variable" >&2
+              missing=1
+            fi
+          done
+          if test -n "$SOVEREIGN_MAIL_STAGING_ACCESS_CLIENT_ID" && \
+             test -z "$SOVEREIGN_MAIL_STAGING_ACCESS_CLIENT_SECRET" || \
+             test -z "$SOVEREIGN_MAIL_STAGING_ACCESS_CLIENT_ID" && \
+             test -n "$SOVEREIGN_MAIL_STAGING_ACCESS_CLIENT_SECRET"; then
+            echo "Configure both staging Access service-token values or neither." >&2
+            missing=1
+          fi
+          test "$missing" -eq 0
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v6
         with:
@@ -256,11 +283,14 @@ jobs:
           --oauth-client-id "$SOVEREIGN_MAIL_STAGING_OAUTH_CLIENT_ID"
           --skip-build
           --skip-deploy
-      - name: Generate disposable authentication secret
+      - name: Generate disposable installation secrets
         run: |
           auth_secret="$(openssl rand -base64 48)"
+          provider_key="$(openssl rand -base64 32)"
           echo "::add-mask::$auth_secret"
+          echo "::add-mask::$provider_key"
           echo "SOVEREIGN_MAIL_STAGING_AUTH_SECRET=$auth_secret" >> "$GITHUB_ENV"
+          echo "SOVEREIGN_MAIL_STAGING_PROVIDER_KEY=$provider_key" >> "$GITHUB_ENV"
       - name: Download and deploy the previous stable release
         if: needs.candidate.outputs.previous_tag != ''
         run: |
@@ -274,6 +304,7 @@ jobs:
           previous_archive="/tmp/sovereign-mail-previous/sovereign-mail-${previous_version}.tar.gz"
           config=".sovereign-mail/deployments/$DEPLOYMENT_NAME/wrangler.jsonc"
           SOVEREIGN_MAIL_AUTH_SECRET="$SOVEREIGN_MAIL_STAGING_AUTH_SECRET" \
+          SOVEREIGN_MAIL_PROVIDER_CREDENTIAL_KEY="$SOVEREIGN_MAIL_STAGING_PROVIDER_KEY" \
           SOVEREIGN_MAIL_EXPECTED_RELEASE_VERSION="$previous_version" \
           SOVEREIGN_MAIL_RELEASE_ARTIFACT_FILE="$previous_archive" \
           SOVEREIGN_MAIL_RELEASE_MANIFEST_FILE="/tmp/sovereign-mail-previous/stable.json" \
@@ -284,6 +315,7 @@ jobs:
         run: |
           for attempt in $(seq 1 150); do
             if curl --fail --silent --show-error \
+              --doh-url https://cloudflare-dns.com/dns-query \
               -H "CF-Access-Client-Id: $SOVEREIGN_MAIL_STAGING_ACCESS_CLIENT_ID" \
               -H "CF-Access-Client-Secret: $SOVEREIGN_MAIL_STAGING_ACCESS_CLIENT_SECRET" \
               "$SOVEREIGN_MAIL_STAGING_URL/api/health" >/dev/null; then
@@ -306,6 +338,7 @@ jobs:
             --skip-deploy
           config=".sovereign-mail/deployments/$DEPLOYMENT_NAME/wrangler.jsonc"
           SOVEREIGN_MAIL_AUTH_SECRET="$SOVEREIGN_MAIL_STAGING_AUTH_SECRET" \
+          SOVEREIGN_MAIL_PROVIDER_CREDENTIAL_KEY="$SOVEREIGN_MAIL_STAGING_PROVIDER_KEY" \
           SOVEREIGN_MAIL_EXPECTED_RELEASE_VERSION="$CANDIDATE_VERSION" \
           SOVEREIGN_MAIL_RELEASE_ARTIFACT_FILE="release/sovereign-mail-${CANDIDATE_VERSION}.tar.gz" \
           SOVEREIGN_MAIL_RELEASE_MANIFEST_FILE="release/stable.json" \
@@ -315,6 +348,7 @@ jobs:
         run: |
           for attempt in $(seq 1 150); do
             if curl --fail --silent --show-error \
+              --doh-url https://cloudflare-dns.com/dns-query \
               -H "CF-Access-Client-Id: $SOVEREIGN_MAIL_STAGING_ACCESS_CLIENT_ID" \
               -H "CF-Access-Client-Secret: $SOVEREIGN_MAIL_STAGING_ACCESS_CLIENT_SECRET" \
               "$SOVEREIGN_MAIL_STAGING_URL/api/health" >/dev/null; then
@@ -357,7 +391,13 @@ jobs:
           retention-days: 30
       - name: Destroy disposable resources
         if: always()
-        run: pnpm sovereign-mail destroy --name "$DEPLOYMENT_NAME" --scope all --yes
+        run: |
+          manifest=".sovereign-mail/deployments/$DEPLOYMENT_NAME/manifest.json"
+          if test -f "$manifest"; then
+            pnpm sovereign-mail destroy --name "$DEPLOYMENT_NAME" --scope all --yes
+          else
+            echo "No deployment manifest exists; there are no recorded resources to destroy."
+          fi
 
   publish:
     needs: [candidate, staging]

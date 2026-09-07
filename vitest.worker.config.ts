@@ -41,6 +41,7 @@ export default defineConfig({
     })
   ],
   test: {
+    hookTimeout: process.platform === "win32" ? 30_000 : 10_000,
     deps: {
       optimizer: {
         ssr: {

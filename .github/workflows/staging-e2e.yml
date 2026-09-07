@@ -27,6 +27,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.SOVEREIGN_MAIL_E2E_CLOUDFLARE_API_TOKEN }}
       SOVEREIGN_MAIL_STAGING_ACCESS_CLIENT_ID: ${{ secrets.SOVEREIGN_MAIL_E2E_ACCESS_CLIENT_ID }}
       SOVEREIGN_MAIL_STAGING_ACCESS_CLIENT_SECRET: ${{ secrets.SOVEREIGN_MAIL_E2E_ACCESS_CLIENT_SECRET }}
+      SOVEREIGN_MAIL_STAGING_APP_HOSTNAME: ${{ secrets.SOVEREIGN_MAIL_E2E_APP_HOSTNAME }}
       SOVEREIGN_MAIL_STAGING_EMAIL_DOMAIN: ${{ secrets.SOVEREIGN_MAIL_E2E_EMAIL_DOMAIN }}
       SOVEREIGN_MAIL_STAGING_OWNER_EMAIL: ${{ secrets.SOVEREIGN_MAIL_E2E_OWNER_EMAIL }}
       SOVEREIGN_MAIL_STAGING_OWNER_PASSWORD: ${{ secrets.SOVEREIGN_MAIL_E2E_OWNER_PASSWORD }}
@@ -35,6 +36,32 @@ jobs:
       SOVEREIGN_MAIL_STAGING_URL: https://${{ secrets.SOVEREIGN_MAIL_E2E_APP_HOSTNAME }}
       DEPLOYMENT_NAME: e2e-${{ github.run_id }}
     steps:
+      - name: Validate staging environment
+        run: |
+          required=(
+            CLOUDFLARE_ACCOUNT_ID
+            CLOUDFLARE_API_TOKEN
+            SOVEREIGN_MAIL_STAGING_APP_HOSTNAME
+            SOVEREIGN_MAIL_STAGING_EMAIL_DOMAIN
+            SOVEREIGN_MAIL_STAGING_OWNER_EMAIL
+            SOVEREIGN_MAIL_STAGING_OWNER_PASSWORD
+            SOVEREIGN_MAIL_STAGING_OAUTH_CLIENT_ID
+          )
+          missing=0
+          for variable in "${required[@]}"; do
+            if test -z "${!variable}"; then
+              echo "Missing sovereign-mail-staging configuration: $variable" >&2
+              missing=1
+            fi
+          done
+          if test -n "$SOVEREIGN_MAIL_STAGING_ACCESS_CLIENT_ID" && \
+             test -z "$SOVEREIGN_MAIL_STAGING_ACCESS_CLIENT_SECRET" || \
+             test -z "$SOVEREIGN_MAIL_STAGING_ACCESS_CLIENT_ID" && \
+             test -n "$SOVEREIGN_MAIL_STAGING_ACCESS_CLIENT_SECRET"; then
+            echo "Configure both staging Access service-token values or neither." >&2
+            missing=1
+          fi
+          test "$missing" -eq 0
       - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.candidate_ref || github.sha }}
@@ -73,11 +100,13 @@ jobs:
           echo "::add-mask::$AUTH_SECRET"
           echo "SOVEREIGN_MAIL_STAGING_AUTH_SECRET=$AUTH_SECRET" >> "$GITHUB_ENV"
           AUTH_SECRET="$AUTH_SECRET" node --input-type=module -e '
+            import { randomBytes } from "node:crypto";
             import { writeFileSync } from "node:fs";
             import webpush from "web-push";
             const vapid = webpush.generateVAPIDKeys();
             writeFileSync("/tmp/sovereign-mail-e2e-secrets.json", `${JSON.stringify({
               BETTER_AUTH_SECRET: process.env.AUTH_SECRET,
+              PROVIDER_CREDENTIAL_KEY: randomBytes(32).toString("base64"),
               VAPID_PUBLIC_KEY: vapid.publicKey,
               VAPID_PRIVATE_KEY: vapid.privateKey
             })}\n`, { mode: 0o600 });
@@ -89,6 +118,7 @@ jobs:
         run: |
           for attempt in $(seq 1 150); do
             if curl --fail --silent --show-error \
+              --doh-url https://cloudflare-dns.com/dns-query \
               -H "CF-Access-Client-Id: $SOVEREIGN_MAIL_STAGING_ACCESS_CLIENT_ID" \
               -H "CF-Access-Client-Secret: $SOVEREIGN_MAIL_STAGING_ACCESS_CLIENT_SECRET" \
               "$SOVEREIGN_MAIL_STAGING_URL/api/health" >/dev/null; then
@@ -123,4 +153,10 @@ jobs:
           retention-days: 30
       - name: Destroy disposable resources
         if: always()
-        run: pnpm sovereign-mail destroy --name "$DEPLOYMENT_NAME" --scope all --yes
+        run: |
+          manifest=".sovereign-mail/deployments/$DEPLOYMENT_NAME/manifest.json"
+          if test -f "$manifest"; then
+            pnpm sovereign-mail destroy --name "$DEPLOYMENT_NAME" --scope all --yes
+          else
+            echo "No deployment manifest exists; there are no recorded resources to destroy."
+          fi

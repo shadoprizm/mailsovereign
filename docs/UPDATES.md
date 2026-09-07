@@ -28,6 +28,24 @@ database schema. The workflow rejects `desktop-only` when any changed path is ou
 allowlist. Every other release uses the `full` scope and must pass the disposable Cloudflare
 staging lifecycle before publication.
 
+## Staging environment contract
+
+The `sovereign-mail-staging` GitHub environment must contain these repository-environment secrets:
+
+- `SOVEREIGN_MAIL_E2E_CLOUDFLARE_ACCOUNT_ID`
+- `SOVEREIGN_MAIL_E2E_CLOUDFLARE_API_TOKEN`
+- `SOVEREIGN_MAIL_E2E_APP_HOSTNAME`
+- `SOVEREIGN_MAIL_E2E_EMAIL_DOMAIN`
+- `SOVEREIGN_MAIL_E2E_OWNER_EMAIL`
+- `SOVEREIGN_MAIL_E2E_OWNER_PASSWORD`
+
+It must also contain the non-secret environment variable `SOVEREIGN_MAIL_E2E_OAUTH_CLIENT_ID`.
+`SOVEREIGN_MAIL_E2E_ACCESS_CLIENT_ID` and `SOVEREIGN_MAIL_E2E_ACCESS_CLIENT_SECRET` are optional,
+but must be configured together when the staging hostname is protected by Cloudflare Access. The
+Cloudflare token must be scoped only to the staging account and the resource operations exercised
+by installation, migration, deployment, D1 Time Travel, verification, and manifest-constrained
+cleanup. Workflows validate this contract before provisioning and never print secret values.
+
 Custom forks must disable this channel or replace the repository, product identifier, manifest
 format, signing key, and release process together. Pointing a modified build at the official
 Sovereign Mail update channel is unsupported.
