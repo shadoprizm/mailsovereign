@@ -206,7 +206,7 @@ export function sanitizeQuotedMessageHtml(input: {
 
 export function sanitizeEmailSignatureHtml(html: string): string {
   return sanitizeHtml(html.slice(0, 20_000), {
-    ...sanitizerOptions(),
+    ...sanitizerOptions(true),
     allowedTags: allowedTags.filter((tag) => tag !== "img"),
     transformTags: {
       a: (tagName, attributes) => ({ tagName, attribs: safeLinkAttributes(attributes) })
@@ -270,11 +270,14 @@ function sanitizeDisplayHtml(input: {
   return { hasRemoteImages, html };
 }
 
-function sanitizerOptions(): sanitizeHtml.IOptions {
+function sanitizerOptions(includeSignatureMetadata = false): sanitizeHtml.IOptions {
+  const commonAttributes = ["align", "dir", "lang", "style", "title", "valign"];
   return {
     allowProtocolRelative: false,
     allowedAttributes: {
-      "*": ["align", "dir", "lang", "style", "title", "valign"],
+      "*": includeSignatureMetadata
+        ? [...commonAttributes, "data-signature-design", "data-sovereign-signature"]
+        : commonAttributes,
       a: ["href", "rel", "target", "title"],
       col: ["span", "width"],
       img: ["alt", "height", "loading", "referrerpolicy", "src", "title", "width"],
@@ -337,15 +340,20 @@ function hasRemoteReference(
 
 function safeLinkAttributes(attributes: sanitizeHtml.Attributes): sanitizeHtml.Attributes {
   const href = attributes.href?.trim();
+  const style = attributes.style?.trim();
+  const presentation = {
+    ...(style && safeStyleValue.test(style) ? { style } : {}),
+    title: attributes.title ?? ""
+  };
   if (!href || (!href.startsWith("#") && !isSafeLink(href))) {
-    return { title: attributes.title ?? "" };
+    return presentation;
   }
-  if (href.startsWith("#")) return { href, title: attributes.title ?? "" };
+  if (href.startsWith("#")) return { href, ...presentation };
   return {
     href,
     rel: "noopener noreferrer",
     target: "_blank",
-    title: attributes.title ?? ""
+    ...presentation
   };
 }
 

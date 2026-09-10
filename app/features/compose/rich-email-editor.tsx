@@ -1,4 +1,3 @@
-import { mergeAttributes, Node } from "@tiptap/core";
 import Placeholder from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -15,6 +14,7 @@ import {
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+import { EmailSignature } from "./email-signature-node";
 
 export function RichEmailEditor({
   contained = true,
@@ -46,7 +46,7 @@ export function RichEmailEditor({
       editorProps: {
         attributes: {
           class:
-            "prose prose-sm min-h-60 max-w-none px-5 py-4 text-sm outline-none [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_p]:my-2",
+            "prose prose-sm min-h-60 max-w-none px-5 py-4 text-sm outline-none [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_p]:my-2 [&_[data-email-signature]]:my-3 [&_[data-email-signature]]:max-w-full [&_[data-email-signature]]:overflow-x-auto [&_.ProseMirror-selectednode]:outline [&_.ProseMirror-selectednode]:outline-2 [&_.ProseMirror-selectednode]:outline-offset-2 [&_.ProseMirror-selectednode]:outline-ring",
           "data-compose-autofocus": ""
         },
         handleDrop: (_view, event) => {
@@ -135,28 +135,6 @@ export function RichEmailEditor({
   );
 }
 
-const EmailSignature = Node.create({
-  name: "emailSignature",
-  group: "block",
-  content: "block+",
-  defining: true,
-  addAttributes() {
-    return {
-      signatureId: {
-        default: null,
-        parseHTML: (element) => element.getAttribute("data-email-signature"),
-        renderHTML: (attributes) =>
-          attributes.signatureId ? { "data-email-signature": attributes.signatureId } : {}
-      }
-    };
-  },
-  parseHTML() {
-    return [{ tag: "div[data-email-signature]" }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ["div", mergeAttributes(HTMLAttributes), 0];
-  }
-});
 function Tool({
   active = false,
   children,

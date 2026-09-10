@@ -1,6 +1,9 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-
+import {
+  buildProfessionalSignature,
+  defaultProfessionalSignatureDesign
+} from "@/features/signatures/professional-signature";
 import {
   applySignatureToHtml,
   defaultSignatureChoice,
@@ -80,6 +83,27 @@ describe("composer signature content", () => {
     const outgoing = htmlForSending(draftHtml);
     expect(outgoing).not.toContain("data-email-signature");
     expect(outgoing).toContain("Astra Web Dev");
+  });
+
+  it("removes professional-card editor metadata without changing its table layout", () => {
+    const professional = buildProfessionalSignature({
+      ...defaultProfessionalSignatureDesign(),
+      brand: "Astra",
+      fullName: "Jeramy Ratelle"
+    });
+    const draftHtml = applySignatureToHtml("<p>Hello</p>", {
+      ...business,
+      html: professional.html,
+      text: professional.text
+    });
+
+    expect(draftHtml).toContain("data-signature-design");
+    const outgoing = htmlForSending(draftHtml);
+    expect(outgoing).not.toContain("data-email-signature");
+    expect(outgoing).not.toContain("data-sovereign-signature");
+    expect(outgoing).not.toContain("data-signature-design");
+    expect(outgoing).toContain("<table");
+    expect(outgoing).toContain("Jeramy Ratelle");
   });
 
   it("replaces only editable prose when an AI proposal is accepted", () => {

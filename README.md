@@ -94,6 +94,7 @@ Run `pnpm cf:typegen` after changing `wrangler.jsonc`.
 - [Ubuntu desktop client](docs/DESKTOP_UBUNTU.md)
 - [Signed releases and updates](docs/UPDATES.md)
 - [IMAP/SMTP operator notes](docs/IMAP_SMTP_CONNECTIONS.md)
+- [Email signatures](docs/SIGNATURES.md)
 - [Mail deletion and drafts](docs/MAIL_LIFECYCLE.md)
 - [Recovery checkpoints and R2 boundary](docs/RECOVERY.md)
 - [Product direction](VISION.md)

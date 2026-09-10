@@ -116,11 +116,15 @@ describe("personal email signatures", () => {
     const { db } = database();
     const signature = await savePersonalSignature(db, "user-one", {
       name: "Safe",
-      html: '<p>Hello<script>alert(1)</script><a href="javascript:alert(1)">click</a></p>',
+      html: '<table data-sovereign-signature="professional-card-v1" data-signature-design="%7B%7D" onclick="alert(1)" style="background-color:#f8fafc"><tbody><tr><td>Hello<script>alert(1)</script><a href="javascript:alert(1)">click</a></td></tr></tbody></table>',
       text: "Hello click"
     });
     expect(signature.html).not.toContain("script");
     expect(signature.html).not.toContain("javascript:");
+    expect(signature.html).not.toContain("onclick");
+    expect(signature.html).toContain('data-sovereign-signature="professional-card-v1"');
+    expect(signature.html).toContain('data-signature-design="%7B%7D"');
+    expect(signature.html).toContain("background-color:#f8fafc");
     await setSignatureDefault(db, "user-one", "one@example.com", signature.id);
     await db
       .prepare(

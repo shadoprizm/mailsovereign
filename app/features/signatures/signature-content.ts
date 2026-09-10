@@ -74,6 +74,12 @@ export function htmlForSending(html: string): string {
   for (const element of document.body.querySelectorAll<HTMLElement>("[data-email-signature]")) {
     element.removeAttribute("data-email-signature");
   }
+  for (const element of document.body.querySelectorAll<HTMLElement>(
+    "[data-sovereign-signature], [data-signature-design]"
+  )) {
+    element.removeAttribute("data-sovereign-signature");
+    element.removeAttribute("data-signature-design");
+  }
   return document.body.innerHTML;
 }
 

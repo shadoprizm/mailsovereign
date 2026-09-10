@@ -1,8 +1,14 @@
-import { Plus, Trash2 } from "lucide-react";
+import { ChevronDown, LayoutTemplate, Plus, Trash2, Type } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,15 +29,23 @@ import {
   updateSignature,
   updateSignatureDefault
 } from "./api";
-import type { EmailSignature, SignaturePreferences } from "./types";
-
-type EditorState = Pick<EmailSignature, "name" | "html" | "text"> & { id: string | null };
+import { buildProfessionalSignature } from "./professional-signature";
+import { ProfessionalSignatureEditor } from "./professional-signature-editor";
+import {
+  newProfessionalSignatureEditor,
+  newSimpleSignatureEditor,
+  type SignatureEditorState,
+  sendingAddresses,
+  signatureEditorFromSignature,
+  signatureInput
+} from "./signature-editor-state";
+import type { SignaturePreferences } from "./types";
 
 const emptyPreferences: SignaturePreferences = { signatures: [], defaults: {} };
 
 export function SignatureSettings({ mailboxes }: { mailboxes: Mailbox[] }): React.ReactElement {
   const [preferences, setPreferences] = React.useState(emptyPreferences);
-  const [editor, setEditor] = React.useState<EditorState | null>(null);
+  const [editor, setEditor] = React.useState<SignatureEditorState | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const identities = sendingAddresses(mailboxes);
@@ -42,7 +56,7 @@ export function SignatureSettings({ mailboxes }: { mailboxes: Mailbox[] }): Reac
       .then((next) => {
         if (!active) return;
         setPreferences(next);
-        setEditor(next.signatures[0] ? editorFromSignature(next.signatures[0]) : null);
+        setEditor(next.signatures[0] ? signatureEditorFromSignature(next.signatures[0]) : null);
       })
       .catch((error) => {
         toast.error(error instanceof Error ? error.message : "Signatures could not be loaded.");
@@ -61,15 +75,15 @@ export function SignatureSettings({ mailboxes }: { mailboxes: Mailbox[] }): Reac
     setSaving(true);
     try {
       const saved = editor.id
-        ? await updateSignature(editor.id, editor)
-        : await createSignature(editor);
+        ? await updateSignature(editor.id, signatureInput(editor))
+        : await createSignature(signatureInput(editor));
       setPreferences((current) => ({
         ...current,
         signatures: [...current.signatures.filter((item) => item.id !== saved.id), saved].sort(
           (left, right) => left.name.localeCompare(right.name)
         )
       }));
-      setEditor(editorFromSignature(saved));
+      setEditor(signatureEditorFromSignature(saved));
       toast.success(editor.id ? "Signature updated." : "Signature created.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Signature could not be saved.");
@@ -88,7 +102,7 @@ export function SignatureSettings({ mailboxes }: { mailboxes: Mailbox[] }): Reac
         const defaults = Object.fromEntries(
           Object.entries(current.defaults).filter(([, signatureId]) => signatureId !== editor.id)
         );
-        setEditor(signatures[0] ? editorFromSignature(signatures[0]) : null);
+        setEditor(signatures[0] ? signatureEditorFromSignature(signatures[0]) : null);
         return { signatures, defaults };
       });
       toast.success("Signature deleted. Saved drafts keep their existing content.");
@@ -118,14 +132,25 @@ export function SignatureSettings({ mailboxes }: { mailboxes: Mailbox[] }): Reac
   return (
     <SettingsSection
       action={
-        <Button
-          size="sm"
-          type="button"
-          onClick={() => setEditor({ id: null, name: "", html: "<p></p>", text: "" })}
-        >
-          <Plus />
-          New signature
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" type="button">
+              <Plus />
+              New signature
+              <ChevronDown />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => setEditor(newProfessionalSignatureEditor())}>
+              <LayoutTemplate />
+              Professional card
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setEditor(newSimpleSignatureEditor())}>
+              <Type />
+              Simple rich text
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       }
       description="Reusable personal signatures and defaults for each From address"
       title="Signatures"
@@ -142,14 +167,15 @@ export function SignatureSettings({ mailboxes }: { mailboxes: Mailbox[] }): Reac
                   key={signature.id}
                   type="button"
                   variant={editor?.id === signature.id ? "secondary" : "ghost"}
-                  onClick={() => setEditor(editorFromSignature(signature))}
+                  onClick={() => setEditor(signatureEditorFromSignature(signature))}
                 >
                   <span className="truncate">{signature.name}</span>
                 </Button>
               ))
             ) : (
               <p className="px-2 py-3 text-xs text-muted-foreground">
-                Create a signature, then assign it to one or more From addresses.
+                Create a professional card or simple signature, then assign it to one or more From
+                addresses.
               </p>
             )}
           </div>
@@ -170,19 +196,32 @@ export function SignatureSettings({ mailboxes }: { mailboxes: Mailbox[] }): Reac
                 />
                 <FieldDescription>Only you see this name.</FieldDescription>
               </Field>
-              <Field>
-                <FieldLabel>Signature content</FieldLabel>
-                <div className="overflow-hidden rounded-md border">
-                  <RichEmailEditor
-                    contained={false}
-                    html={editor.html}
-                    placeholder="Write your signature…"
-                    onChange={(html, text) =>
-                      setEditor((current) => (current ? { ...current, html, text } : current))
-                    }
-                  />
-                </div>
-              </Field>
+              {editor.design ? (
+                <ProfessionalSignatureEditor
+                  design={editor.design}
+                  onChange={(design) =>
+                    setEditor((current) => {
+                      if (!current) return current;
+                      const content = buildProfessionalSignature(design);
+                      return { ...current, ...content, design };
+                    })
+                  }
+                />
+              ) : (
+                <Field>
+                  <FieldLabel>Signature content</FieldLabel>
+                  <div className="overflow-hidden rounded-md border">
+                    <RichEmailEditor
+                      contained={false}
+                      html={editor.html}
+                      placeholder="Write your signature…"
+                      onChange={(html, text) =>
+                        setEditor((current) => (current ? { ...current, html, text } : current))
+                      }
+                    />
+                  </div>
+                </Field>
+              )}
               <div className="flex items-center justify-between gap-3">
                 <Button
                   disabled={saving || !editor.name.trim() || !editor.text.trim()}
@@ -249,23 +288,4 @@ export function SignatureSettings({ mailboxes }: { mailboxes: Mailbox[] }): Reac
       ) : null}
     </SettingsSection>
   );
-}
-
-function editorFromSignature(signature: EmailSignature): EditorState {
-  return { id: signature.id, name: signature.name, html: signature.html, text: signature.text };
-}
-
-function sendingAddresses(mailboxes: Mailbox[]): string[] {
-  return mailboxes
-    .filter(
-      (mailbox) =>
-        mailbox.isActive && (mailbox.accessLevel === "agent" || mailbox.accessLevel === "manager")
-    )
-    .flatMap((mailbox) =>
-      mailbox.addresses.length
-        ? mailbox.addresses
-            .filter((address) => address.sendEnabled)
-            .map((address) => address.address)
-        : [mailbox.address]
-    );
 }
