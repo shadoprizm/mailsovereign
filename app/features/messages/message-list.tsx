@@ -13,11 +13,16 @@ type MessageListProps = {
   hasMore: boolean;
   isLoadingMore: boolean;
   loadMoreError: string | null;
+  selectionMode?: boolean;
+  selectedThreadIds?: ReadonlySet<string>;
   selectedThreadId: string | null;
   onLoadMore: () => void;
   onRefresh: () => Promise<void> | void;
+  onSelectionChange?: (threadId: string, selected: boolean) => void;
   onSelect: (conversation: ConversationSummary) => void;
 };
+
+const emptySelection = new Set<string>();
 
 export function MessageList({
   activeFolder,
@@ -25,9 +30,12 @@ export function MessageList({
   hasMore,
   isLoadingMore,
   loadMoreError,
+  selectionMode = false,
+  selectedThreadIds = emptySelection,
   selectedThreadId,
   onLoadMore,
   onRefresh,
+  onSelectionChange,
   onSelect
 }: MessageListProps): React.ReactElement {
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
@@ -65,7 +73,10 @@ export function MessageList({
                 messageId: conversation.id
               })}
               isActive={conversation.threadId === selectedThreadId}
+              isSelected={selectedThreadIds.has(conversation.threadId)}
+              selectionMode={selectionMode}
               key={conversation.threadId}
+              onSelectionChange={(selected) => onSelectionChange?.(conversation.threadId, selected)}
               onSelect={onSelect}
             />
           ))}

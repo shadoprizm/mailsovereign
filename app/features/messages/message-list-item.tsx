@@ -1,6 +1,7 @@
 import { MessagesSquare, Paperclip, Star } from "lucide-react";
 import type * as React from "react";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/cn";
 import { formatDateTime } from "@/lib/format";
 import type { MailFolderId } from "@/lib/routes";
@@ -11,6 +12,9 @@ type MessageListItemProps = {
   conversation: ConversationSummary;
   href: string;
   isActive: boolean;
+  isSelected?: boolean;
+  selectionMode?: boolean;
+  onSelectionChange?: (selected: boolean) => void;
   onSelect: (conversation: ConversationSummary) => void;
 };
 
@@ -19,6 +23,9 @@ export function MessageListItem({
   conversation,
   href,
   isActive,
+  isSelected = false,
+  selectionMode = false,
+  onSelectionChange,
   onSelect
 }: MessageListItemProps): React.ReactElement {
   const isUnread = conversation.unreadCount > 0;
@@ -27,28 +34,8 @@ export function MessageListItem({
       ? conversation.fromAddress
       : `To: ${conversation.to[0] ?? "recipient"}`;
 
-  return (
-    <a
-      className={cn(
-        "relative grid w-full gap-1.5 border-b border-border/70 px-4 py-3 text-left transition-colors hover:bg-muted/55",
-        isActive && "bg-muted/85",
-        isUnread && !isActive && "bg-card/70"
-      )}
-      href={href}
-      onClick={(event) => {
-        if (
-          event.button !== 0 ||
-          event.metaKey ||
-          event.ctrlKey ||
-          event.shiftKey ||
-          event.altKey
-        ) {
-          return;
-        }
-        event.preventDefault();
-        onSelect(conversation);
-      }}
-    >
+  const content = (
+    <>
       <div className="flex min-w-0 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           {isUnread && (
@@ -93,6 +80,59 @@ export function MessageListItem({
           </Badge>
         )}
       </div>
+    </>
+  );
+
+  if (selectionMode) {
+    return (
+      <div
+        className={cn(
+          "relative flex w-full border-b border-border/70 text-left transition-colors hover:bg-muted/55",
+          isSelected ? "bg-muted/85" : isUnread ? "bg-card/70" : undefined
+        )}
+      >
+        <div className="flex w-11 shrink-0 items-start justify-center pt-4">
+          <Checkbox
+            aria-label={`Select conversation: ${conversation.subject}`}
+            checked={isSelected}
+            onCheckedChange={(checked) => onSelectionChange?.(checked === true)}
+          />
+        </div>
+        <button
+          aria-pressed={isSelected}
+          className="grid min-w-0 flex-1 gap-1.5 py-3 pr-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          type="button"
+          onClick={() => onSelectionChange?.(!isSelected)}
+        >
+          {content}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <a
+      className={cn(
+        "relative grid w-full gap-1.5 border-b border-border/70 px-4 py-3 text-left transition-colors hover:bg-muted/55",
+        isActive && "bg-muted/85",
+        isUnread && !isActive && "bg-card/70"
+      )}
+      href={href}
+      onClick={(event) => {
+        if (
+          event.button !== 0 ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.shiftKey ||
+          event.altKey
+        ) {
+          return;
+        }
+        event.preventDefault();
+        onSelect(conversation);
+      }}
+    >
+      {content}
     </a>
   );
 }
