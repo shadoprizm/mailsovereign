@@ -18,6 +18,11 @@ import {
   getMessageThread,
   runConversationAction
 } from "@/features/messages/api";
+import {
+  ConversationListHeader,
+  ConversationSelectionDeleteDialog,
+  useConversationSelection
+} from "@/features/messages/conversation-selection";
 import { MessageDetail } from "@/features/messages/message-detail";
 import { MessageList } from "@/features/messages/message-list";
 import type {
@@ -150,6 +155,14 @@ export function InboxPage({
     (conversation) => conversation.threadId === selectedThreadId
   );
   const readerSelectedId = selectedConversation?.id ?? selectedId;
+  const selection = useConversationSelection({
+    activeFolder,
+    conversations,
+    selectedThreadId,
+    onConversationAction,
+    onMessageRouteChange,
+    onRefresh
+  });
 
   React.useEffect(() => {
     if (
@@ -196,26 +209,25 @@ export function InboxPage({
       data-mobile-scroll-active={!desktopShell && !selectedId ? "true" : undefined}
       data-mobile-view="message-list"
     >
-      <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
-        <h1 className="text-sm font-medium">
-          <span className="md:hidden">{activeLabel}</span>
-          <span className="hidden md:inline">Conversations</span>
-        </h1>
-        {conversationCountLabel ? (
-          <span className="ml-auto font-mono text-[11px] text-muted-foreground">
-            {conversationCountLabel}
-          </span>
-        ) : null}
-      </div>
+      <ConversationListHeader
+        activeFolder={activeFolder}
+        activeLabel={activeLabel}
+        conversationCount={conversations.length}
+        conversationCountLabel={conversationCountLabel}
+        selection={selection}
+      />
       <MessageList
         activeFolder={activeFolder}
         conversations={conversations}
         hasMore={hasMore}
         isLoadingMore={isLoadingMore}
         loadMoreError={loadMoreError}
+        selectionMode={selection.selectionMode}
+        selectedThreadIds={selection.selectedThreadIds}
         selectedThreadId={selectedThreadId}
         onLoadMore={onLoadMore}
         onRefresh={onRefresh}
+        onSelectionChange={selection.setSelected}
         onSelect={(conversation) => onSelect(conversation.id)}
       />
     </section>
@@ -255,40 +267,46 @@ export function InboxPage({
     </section>
   );
 
+  const bulkDeleteDialog = <ConversationSelectionDeleteDialog selection={selection} />;
+
   if (!desktopShell) {
     return (
       <div className="h-full overflow-hidden">
         {listSection}
         {readerSection}
+        {bulkDeleteDialog}
       </div>
     );
   }
 
   return (
-    <ResizablePanelGroup
-      id="sovereign-mail-conversation-workspace"
-      onLayoutChanged={() => {
-        const size = conversationListPanelRef.current?.getSize();
-        if (size) {
-          storeLayoutValue(conversationListWidthStorageKey, Math.round(size.inPixels));
-        }
-      }}
-      orientation="horizontal"
-    >
-      <ResizablePanel
-        defaultSize={initialConversationListWidth}
-        groupResizeBehavior="preserve-pixel-size"
-        id="conversation-list"
-        maxSize={maximumConversationListWidth}
-        minSize={minimumConversationListWidth}
-        panelRef={conversationListPanelRef}
+    <>
+      <ResizablePanelGroup
+        id="sovereign-mail-conversation-workspace"
+        onLayoutChanged={() => {
+          const size = conversationListPanelRef.current?.getSize();
+          if (size) {
+            storeLayoutValue(conversationListWidthStorageKey, Math.round(size.inPixels));
+          }
+        }}
+        orientation="horizontal"
       >
-        {listSection}
-      </ResizablePanel>
-      <ResizableHandle aria-label="Resize conversation list" id="conversation-list-divider" />
-      <ResizablePanel id="conversation-reader" minSize={minimumConversationReaderWidth}>
-        {readerSection}
-      </ResizablePanel>
-    </ResizablePanelGroup>
+        <ResizablePanel
+          defaultSize={initialConversationListWidth}
+          groupResizeBehavior="preserve-pixel-size"
+          id="conversation-list"
+          maxSize={maximumConversationListWidth}
+          minSize={minimumConversationListWidth}
+          panelRef={conversationListPanelRef}
+        >
+          {listSection}
+        </ResizablePanel>
+        <ResizableHandle aria-label="Resize conversation list" id="conversation-list-divider" />
+        <ResizablePanel id="conversation-reader" minSize={minimumConversationReaderWidth}>
+          {readerSection}
+        </ResizablePanel>
+      </ResizablePanelGroup>
+      {bulkDeleteDialog}
+    </>
   );
 }

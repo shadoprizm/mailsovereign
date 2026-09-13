@@ -2,6 +2,8 @@
 
 ## 1.2.1
 
+- Add conversation selection with individual and select-all actions for Archive, Trash, and
+  confirmed permanent deletion from Trash.
 - Generate and preserve the provider credential-encryption key during signed installs and updates,
   and make `doctor` fail clearly when any core Worker secret is missing.
 - Remediate production dependency advisories and give Windows integration setup hooks enough time

@@ -12,10 +12,12 @@ import {
 } from "@/components/ui/dialog";
 
 export function DeleteConversationDialog({
+  count = 1,
   open,
   onConfirm,
   onOpenChange
 }: {
+  count?: number;
   open: boolean;
   onConfirm: () => Promise<void>;
   onOpenChange: (open: boolean) => void;
@@ -44,11 +46,16 @@ export function DeleteConversationDialog({
     <Dialog open={open} onOpenChange={(nextOpen) => !pending && onOpenChange(nextOpen)}>
       <DialogContent className="w-[min(92vw,480px)]">
         <DialogHeader>
-          <DialogTitle>Delete this conversation permanently?</DialogTitle>
+          <DialogTitle>
+            {count === 1
+              ? "Delete this conversation permanently?"
+              : `Delete ${count} conversations permanently?`}
+          </DialogTitle>
           <DialogDescription>
-            This permanently deletes the messages in Trash that you can access, including their
-            stored bodies and attachments. Copies held by a connected email provider are not
-            changed. This action cannot be undone.
+            This permanently deletes the messages in Trash that you can access from{" "}
+            {count === 1 ? "this conversation" : "these conversations"}, including their stored
+            bodies and attachments. Copies held by a connected email provider are not changed. This
+            action cannot be undone.
           </DialogDescription>
         </DialogHeader>
         {error ? (

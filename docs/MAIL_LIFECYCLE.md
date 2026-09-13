@@ -18,6 +18,13 @@ The same mailbox access boundary applies to both actions. A person needs Agent o
 to change or permanently delete mail. One action cannot change a copy in a mailbox that person
 cannot access.
 
+The conversation-list **Select** control enables bulk actions across the conversations currently
+loaded in the active view. A person can select individual conversations or select all loaded
+conversations, then move them to Archive or Trash where those actions apply. In Trash, the bulk
+action is **Delete permanently** and uses the same confirmation and storage cleanup rules as
+single-conversation deletion. Successful conversations leave the selection; any conversation that
+could not be changed remains selected so the action can be retried.
+
 Messages left in Trash remain subject to the mailbox Trash retention period. The default period is
 30 days.
 
