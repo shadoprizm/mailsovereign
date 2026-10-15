@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Add an optional, disabled-by-default customer-owned TLS IMAP/SMTP gateway for managed mailboxes,
+  with mailbox-scoped device passwords, persistent UIDs, flag synchronization, and revocation.
+- Add migration 0027, native-client specifications, device setup UI, and protocol/storage tests.
+- Derive signed release schema metadata from the actual packaged migrations.
+
 ## 1.2.1
 
 - Add conversation selection with individual and select-all actions for Archive, Trash, and

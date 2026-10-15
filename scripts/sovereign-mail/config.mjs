@@ -1,6 +1,7 @@
 import fs from "node:fs";
 
 import { configPath } from "./manifest.mjs";
+import { nativeMailConfig } from "./native-mail-config.mjs";
 import { rootDir } from "./paths.mjs";
 
 const rootFromDeployment = "../../..";
@@ -91,6 +92,11 @@ export function createWranglerConfig(manifest) {
     SOVEREIGN_MAIL_APP_VERSION: appVersion,
     SOVEREIGN_MAIL_WORKER_NAME: manifest.worker.name,
     CLOUDFLARE_OAUTH_CLIENT_ID: cloudflareOAuth.clientId,
+    ...(manifest.nativeMail?.host
+      ? {
+          SOVEREIGN_MAIL_NATIVE_MAIL_HOST: nativeMailConfig(manifest.nativeMail.host).host
+        }
+      : {}),
     ...(manifest.authUrl ? { BETTER_AUTH_URL: manifest.authUrl } : {})
   };
   const customDomains = [manifest.appDomain].filter(Boolean);

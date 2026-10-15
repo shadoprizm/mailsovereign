@@ -5,6 +5,7 @@ import { AccountSettings } from "@/features/account/account-settings";
 import { AiSettings } from "@/features/billing/ai-settings";
 import { DomainSettings } from "@/features/domains/domain-settings";
 import { MailboxSettings } from "@/features/mailboxes/mailbox-settings";
+import { NativeMailSettings } from "@/features/mailboxes/native-mail-settings";
 import type { Mailbox } from "@/features/mailboxes/types";
 import { NotificationSettings } from "@/features/notifications/notification-settings";
 import type { NotificationController } from "@/features/notifications/types";
@@ -97,6 +98,7 @@ export function SettingsPage({
               onDefaultFromMailboxChange={onDefaultFromMailboxChange}
               onChanged={onRefresh}
             />
+            <NativeMailSettings mailboxes={mailboxes} />
           </TabsContent>
           <TabsContent className="mt-5" value="signatures">
             <React.Suspense

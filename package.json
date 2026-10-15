@@ -27,13 +27,14 @@
     "lint": "biome lint .",
     "code:check": "biome check .",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm test:unit && pnpm test:integration",
+    "test": "pnpm test:unit && pnpm test:integration && pnpm test:gateway",
+    "test:gateway": "pnpm --filter @sovereign-mail/native-gateway test",
     "test:unit": "vitest run --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.worker.config.ts",
     "test:coverage": "vitest run --config vitest.config.ts --coverage",
     "test:architecture": "node scripts/check-architecture.mjs",
     "test:pwa": "node scripts/test-pwa.mjs",
-    "test:e2e:staging": "playwright test --config playwright.config.ts app-shell-smoke.spec.ts lifecycle.spec.ts",
+    "test:e2e:staging": "playwright test --config playwright.config.ts app-shell-smoke.spec.ts lifecycle.spec.ts native-mail.spec.ts",
     "test:e2e:staging:smoke": "playwright test --config playwright.config.ts app-shell-smoke.spec.ts",
     "test:e2e:staging:lifecycle": "playwright test --config playwright.config.ts lifecycle.spec.ts",
     "pwa:icons": "node scripts/generate-pwa-icons.mjs",
@@ -47,7 +48,8 @@
     "sovereign-mail:reset": "node scripts/sovereign-mail/cli.mjs reset",
     "sovereign-mail:destroy": "node scripts/sovereign-mail/cli.mjs destroy",
     "cf:typegen": "wrangler types",
-    "release:package": "node scripts/release/package.mjs"
+    "release:package": "node scripts/release/package.mjs",
+    "test:e2e:native": "node scripts/native-mail-staging.mjs"
   },
   "cloudflare": {
     "bindings": {

@@ -1,5 +1,13 @@
 PRAGMA foreign_keys = OFF;
 
+DROP TABLE IF EXISTS native_mail_submissions;
+DROP TABLE IF EXISTS native_mail_subscriptions;
+DROP TABLE IF EXISTS native_mail_sessions;
+DROP TABLE IF EXISTS native_mail_passwords;
+DROP TABLE IF EXISTS native_mail_journal;
+DROP TABLE IF EXISTS native_mail_entries;
+DROP TABLE IF EXISTS native_mail_folders;
+
 DROP TABLE IF EXISTS oauthClientAssertion;
 DROP TABLE IF EXISTS ai_usage_events;
 DROP TABLE IF EXISTS ai_credit_ledger;

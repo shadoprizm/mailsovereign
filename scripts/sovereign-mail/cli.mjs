@@ -5,6 +5,7 @@ import { backup } from "./backup.mjs";
 import { destroy } from "./destroy.mjs";
 import { doctor } from "./doctor.mjs";
 import { install } from "./install.mjs";
+import { configureNativeMail } from "./native-mail.mjs";
 import { configureOAuth } from "./oauth.mjs";
 import { printPostDeploy } from "./postdeploy.mjs";
 import { reset } from "./reset.mjs";
@@ -15,6 +16,9 @@ const { flags } = parseArgs(rest);
 
 try {
   switch (command) {
+    case "native-mail":
+      configureNativeMail(flags);
+      break;
     case "install":
       install(flags);
       break;
@@ -58,6 +62,8 @@ Usage:
   pnpm sovereign-mail install --name dev-01 --auth-url https://mail.example.com --oauth-client-id CLIENT_ID [--domain example.com]
   pnpm sovereign-mail oauth --name dev-01 --mode customer --auth-url https://mail.example.com --client-id CLIENT_ID
   pnpm sovereign-mail doctor --name dev-01
+  pnpm sovereign-mail native-mail --name dev-01 --host imap.example.com [--dry-run]
+  pnpm sovereign-mail native-mail --name dev-01 --disable [--dry-run]
   pnpm sovereign-mail backup --name dev-01 [--output backup.json]
   pnpm sovereign-mail restore --name dev-01 --backup backup.json --yes
   pnpm sovereign-mail reset --name dev-01 --scope data|storage|domain|all
@@ -76,6 +82,7 @@ Install options:
   --auth-url <origin>    Exact canonical HTTPS Sovereign Mail origin.
   --oauth-mode <mode>    Customer-managed OAuth only; defaults to customer.
   --oauth-client-id <id> Customer OAuth client ID. Required with --auth-url.
+  --native-mail-host <host> Optional verified TLS gateway hostname; standard IMAP/SMTP ports.
   SOVEREIGN_MAIL_AUTH_SECRET     Preserve an existing Better Auth secret without exposing it in argv.
   SOVEREIGN_MAIL_PROVIDER_CREDENTIAL_KEY
                           Preserve an existing 32-byte base64 provider key without exposing it in argv.

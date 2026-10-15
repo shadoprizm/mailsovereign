@@ -1,13 +1,25 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { createHash, createPrivateKey, sign } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from "node:fs";
 import { resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 
 const root = resolve(import.meta.dirname, "../..");
 const product = "sovereign-mail";
-const schemaVersion = 20;
+const schemaVersion = Math.max(
+  ...readdirSync(resolve(root, "migrations"))
+    .filter((filename) => /^\d{4}_.+\.sql$/.test(filename))
+    .map((filename) => Number(filename.slice(0, 4)))
+);
 const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
 const version = process.env.SOVEREIGN_MAIL_RELEASE_VERSION ?? packageJson.version;
 const minVersion =
