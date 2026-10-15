@@ -1,6 +1,6 @@
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { capture } from "./release/command.mjs";
+import { attemptRun, capture } from "./release/command.mjs";
 import { deploySource } from "./release/worker-deploy.mjs";
 import { run } from "./sovereign-mail/command.mjs";
 import { destroy } from "./sovereign-mail/destroy.mjs";
@@ -33,6 +33,15 @@ if (
 }
 if (existsSync(manifestPath(name)))
   throw new Error("Refusing to replace an existing staging installation.");
+const existingWorker = attemptRun(
+  "pnpm",
+  ["exec", "wrangler", "deployments", "list", "--name", `sovereign-mail-${name}`, "--json"],
+  process.cwd()
+);
+if (existingWorker.status === 0)
+  throw new Error("Refusing to replace an existing remote staging Worker.");
+if (!`${existingWorker.stdout}${existingWorker.stderr}`.includes("[code: 10007]"))
+  throw new Error("Could not verify that the remote staging Worker name is unused.");
 run("pnpm", ["exec", "playwright", "install", "chromium"]);
 const secret = randomBytes(48).toString("base64url");
 const password = randomBytes(32).toString("base64url");
@@ -137,6 +146,10 @@ try {
 function cleanDisposableInstallation() {
   if (existsSync(manifestPath(name))) {
     const manifest = loadManifest(name);
+    if (!manifest.d1.created || !manifest.r2.created || !manifest.queue.created) {
+      console.error("Provisioning was incomplete. Preserved the manifest for scoped recovery.");
+      return;
+    }
     if (manifest.worker.deployed && manifest.d1.created && manifest.r2.created) {
       if (manifest.d1.reused || manifest.r2.reused || manifest.name !== name)
         throw new Error("Refusing to clean objects from an installation this run did not create.");
