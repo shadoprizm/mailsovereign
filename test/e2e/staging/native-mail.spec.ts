@@ -41,6 +41,7 @@ test("native mail device setup and TLS gateway use the deployed staging Worker",
   await page.goto("/settings/mailboxes");
   const section = page.getByRole("region", { name: "Apple Mail and other mail apps" });
   await expect(section).toBeVisible();
+  await expect(section.getByRole("option", { name: address, exact: true })).toBeAttached();
   await section.getByLabel("Mailbox", { exact: true }).selectOption(mailbox.id);
   await section.getByLabel("Device name").fill("Staging iPhone");
   await section.getByRole("button", { name: "Create device password" }).click();

@@ -1,6 +1,7 @@
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { attemptRun, capture } from "./release/command.mjs";
+import { join } from "node:path";
+import { attemptRun, capture, run as streamRun } from "./release/command.mjs";
 import { deploySource } from "./release/worker-deploy.mjs";
 import { run } from "./sovereign-mail/command.mjs";
 import { destroy } from "./sovereign-mail/destroy.mjs";
@@ -12,10 +13,12 @@ import {
   manifestPath,
   writeManifest
 } from "./sovereign-mail/manifest.mjs";
+import { rootDir } from "./sovereign-mail/paths.mjs";
 
 const name = process.argv[2];
 const origin = process.env.SOVEREIGN_MAIL_STAGING_URL;
 const clientId = process.env.SOVEREIGN_MAIL_STAGING_OAUTH_CLIENT_ID;
+const wrangler = join(rootDir, "node_modules", "wrangler", "bin", "wrangler.js");
 if (!/^native-mail-e2e-[a-z0-9-]+$/.test(name ?? "") || !origin || !clientId) {
   throw new Error("Supply a new native-mail-e2e-* name, STAGING_URL, and STAGING_OAUTH_CLIENT_ID.");
 }
@@ -34,9 +37,9 @@ if (
 if (existsSync(manifestPath(name)))
   throw new Error("Refusing to replace an existing staging installation.");
 const existingWorker = attemptRun(
-  "pnpm",
-  ["exec", "wrangler", "deployments", "list", "--name", `sovereign-mail-${name}`, "--json"],
-  process.cwd()
+  process.execPath,
+  [wrangler, "deployments", "list", "--name", `sovereign-mail-${name}`, "--json"],
+  rootDir
 );
 if (existingWorker.status === 0)
   throw new Error("Refusing to replace an existing remote staging Worker.");
@@ -120,16 +123,20 @@ try {
     })
   });
   if (bootstrap.status !== 201) throw new Error(`Staging bootstrap failed (${bootstrap.status}).`);
-  run("pnpm", [
-    "exec",
-    "playwright",
-    "test",
-    "--config",
-    "playwright.config.ts",
-    "app-shell-smoke.spec.ts",
-    "lifecycle.spec.ts",
-    "native-mail.spec.ts"
-  ]);
+  streamRun(
+    "pnpm",
+    [
+      "exec",
+      "playwright",
+      "test",
+      "--config",
+      "playwright.config.ts",
+      "app-shell-smoke.spec.ts",
+      "lifecycle.spec.ts",
+      "native-mail.spec.ts"
+    ],
+    process.cwd()
+  );
   console.log(
     "Native mail passed browser and TLS protocol staging verification. No external mail was sent."
   );
@@ -155,10 +162,9 @@ function cleanDisposableInstallation() {
         throw new Error("Refusing to clean objects from an installation this run did not create.");
       const result = JSON.parse(
         capture(
-          "pnpm",
+          process.execPath,
           [
-            "exec",
-            "wrangler",
+            wrangler,
             "d1",
             "execute",
             "DB",
@@ -169,7 +175,7 @@ function cleanDisposableInstallation() {
             "--command",
             "SELECT raw_r2_key AS object_key FROM messages WHERE raw_r2_key IS NOT NULL UNION SELECT html_r2_key FROM messages WHERE html_r2_key IS NOT NULL UNION SELECT r2_key FROM message_attachments"
           ],
-          process.cwd()
+          rootDir
         )
       );
       for (const { object_key: key } of result.flatMap((item) => item.results ?? [])) {

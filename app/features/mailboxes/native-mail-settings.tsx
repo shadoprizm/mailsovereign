@@ -93,9 +93,12 @@ export function NativeMailSettings({ mailboxes }: { mailboxes: Mailbox[] }): Rea
       {settings?.enabled ? (
         <>
           <div className="grid max-w-lg gap-3 sm:grid-cols-2">
-            <label className="space-y-1 text-xs">
-              Mailbox
+            <div className="space-y-1 text-xs">
+              <label className="block" htmlFor="native-mail-mailbox">
+                Mailbox
+              </label>
               <select
+                id="native-mail-mailbox"
                 className="h-9 w-full rounded-md border bg-background px-2"
                 value={selectedId}
                 onChange={(event) => setMailboxId(event.target.value)}
@@ -106,7 +109,7 @@ export function NativeMailSettings({ mailboxes }: { mailboxes: Mailbox[] }): Rea
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
             <label className="space-y-1 text-xs" htmlFor="native-mail-device-label">
               Device name
               <Input
