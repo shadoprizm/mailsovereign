@@ -3,11 +3,13 @@ import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 
-const native = readFileSync(resolve("migrations/0027_native_mail_clients.sql"), "utf8");
+const nativeStorage = readFileSync(resolve("migrations/0027_native_mail_clients.sql"), "utf8");
+const nativeState = readFileSync(resolve("migrations/0028_native_mail_schema_state.sql"), "utf8");
+const native = `${nativeStorage}\n${nativeState}`;
 function baseline() {
   const db = new DatabaseSync(":memory:");
   for (const name of readdirSync("migrations")
-    .filter((name) => name.endsWith(".sql") && name !== "0027_native_mail_clients.sql")
+    .filter((name) => name.endsWith(".sql") && name < "0027_")
     .sort()) {
     db.exec(readFileSync(resolve("migrations", name), "utf8"));
   }
@@ -38,6 +40,28 @@ describe("native mail migration", () => {
       count: 6
     });
     expect(db.prepare("SELECT uid FROM native_mail_entries").get()).toEqual({ uid: 1 });
+    expect(db.prepare("SELECT installed_schema_version FROM release_state").get()).toEqual({
+      installed_schema_version: 28
+    });
+    db.close();
+  });
+  it("repairs an already installed native schema without changing persistent UIDs", () => {
+    const db = baseline();
+    mailbox(db, "box");
+    message(db, "existing");
+    db.exec(nativeStorage);
+    const before = db.prepare("SELECT uid, folder_id FROM native_mail_entries").all();
+    const folders = db
+      .prepare("SELECT id, uid_validity FROM native_mail_folders ORDER BY id")
+      .all();
+    db.exec(nativeState);
+    expect(db.prepare("SELECT installed_schema_version FROM release_state").get()).toEqual({
+      installed_schema_version: 28
+    });
+    expect(db.prepare("SELECT uid, folder_id FROM native_mail_entries").all()).toEqual(before);
+    expect(
+      db.prepare("SELECT id, uid_validity FROM native_mail_folders ORDER BY id").all()
+    ).toEqual(folders);
     db.close();
   });
   it("backfills existing mail, preserves UIDVALIDITY, and never reuses a moved UID", () => {

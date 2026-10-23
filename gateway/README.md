@@ -33,7 +33,7 @@ Your iPhone must have Tailscale connected. Public listeners require their own re
 certificate, and firewall configuration. Do not proxy IMAP or SMTP through Cloudflare's standard
 HTTP proxy.
 
-Apply migration 0027 to the selected manifest-backed Worker, then run
+Apply all pending migrations, including 0027 and 0028, to the selected manifest-backed Worker, then run
 `pnpm sovereign-mail native-mail --name production --host imap.example.com` only after the gateway
 has passed acceptance. This records the nonsecret Worker variable `SOVEREIGN_MAIL_NATIVE_MAIL_HOST`
 in the selected manifest and regenerated Worker configuration. Deploy that configuration. This

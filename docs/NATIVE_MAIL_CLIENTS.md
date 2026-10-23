@@ -53,6 +53,11 @@ the same device request from being delivered twice.
 
 ## Installation and acceptance
 
+Apply all pending migrations, including 0027 for native mail storage and 0028 for its release
+schema marker. The follow-up migration repairs installations that already applied 0027 without
+changing their mail or persistent UIDs. Schema version 28 prevents the updater from offering an
+older signed release that cannot support the installed native-mail schema.
+
 Run the optional gateway on a customer-controlled Linux server with a trusted TLS certificate.
 Both listeners require TLS 1.2 or later; plaintext and untrusted backend HTTPS are rejected.
 Each gateway accepts at most sixteen concurrent connections per listener. JSON control requests

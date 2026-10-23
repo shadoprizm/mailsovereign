@@ -5,6 +5,7 @@
 - Support separate IMAP and SMTP gateway services, actual public proxy ports, and secret TLS certificate inputs.
 - Package an unprivileged gateway container with an isolated health endpoint and an allowlisted build context.
 - Fix IMAP TLS hostname negotiation and cover valid and invalid DNS certificate names.
+- Record schema version 28 with a follow-up migration so existing native-mail installations reject older releases.
 
 ## Unreleased
 

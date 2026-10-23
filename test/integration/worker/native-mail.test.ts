@@ -61,7 +61,7 @@ describe("native mail storage and security", () => {
     for (const [name, source] of Object.entries(migrations).sort(([a], [b]) =>
       a.localeCompare(b)
     )) {
-      if (name.endsWith("0027_native_mail_clients.sql")) continue;
+      if (name.slice(name.lastIndexOf("/") + 1) >= "0027_") continue;
       await env.DB.batch(migrationStatements(source).map((statement) => env.DB.prepare(statement)));
     }
     const now = new Date().toISOString();
@@ -88,11 +88,12 @@ describe("native mail storage and security", () => {
         now
       )
     ]);
-    const source = Object.entries(migrations).find(([name]) =>
-      name.endsWith("0027_native_mail_clients.sql")
-    )?.[1];
-    if (!source) throw new Error("Native migration is missing.");
-    await env.DB.batch(migrationStatements(source).map((statement) => env.DB.prepare(statement)));
+    for (const [name, source] of Object.entries(migrations).sort(([a], [b]) =>
+      a.localeCompare(b)
+    )) {
+      if (name.slice(name.lastIndexOf("/") + 1) < "0027_") continue;
+      await env.DB.batch(migrationStatements(source).map((statement) => env.DB.prepare(statement)));
+    }
   });
 
   it("hashes device passwords and revokes existing sessions immediately", async () => {

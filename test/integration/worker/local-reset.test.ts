@@ -28,6 +28,8 @@ import mailOrganizationMigration from "../../../migrations/0023_mail_organizatio
 import transactionalEmailMigration from "../../../migrations/0024_transactional_email.sql?raw";
 import bulkMailOrganizationMigration from "../../../migrations/0025_bulk_mail_organization.sql?raw";
 import aiProviderMigration from "../../../migrations/0026_ai_provider_connection.sql?raw";
+import nativeMailMigration from "../../../migrations/0027_native_mail_clients.sql?raw";
+import nativeMailSchemaState from "../../../migrations/0028_native_mail_schema_state.sql?raw";
 import { buildSeedSql } from "../../../scripts/local-seed-fixture.mjs";
 import resetSql from "../../../scripts/sovereign-mail/reset-d1.sql?raw";
 import { migrationStatements } from "./migration-statements";
@@ -59,7 +61,9 @@ const migrations = [
   mailOrganizationMigration,
   transactionalEmailMigration,
   bulkMailOrganizationMigration,
-  aiProviderMigration
+  aiProviderMigration,
+  nativeMailMigration,
+  nativeMailSchemaState
 ];
 
 describe("local database reset", () => {
@@ -68,8 +72,9 @@ describe("local database reset", () => {
     await applyStatements(
       buildSeedSql(await hashPassword("local-seed-password"), new Date("2026-08-14T18:00:00.000Z"))
     );
-  });
+  }, 30_000);
 
+  // Reapplying the complete schema can exceed five seconds on hosted Windows runners.
   it("removes current data and supports a fresh migration", async () => {
     await applyStatements(resetSql);
     await applyMigrations();
@@ -157,9 +162,13 @@ describe("local database reset", () => {
     ).first<{ product: string; installed_schema_version: number }>();
     expect(releaseIdentity).toEqual({
       product: "sovereign-mail",
-      installed_schema_version: 26
+      installed_schema_version: 28
     });
-  });
+    const nativeTables = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name LIKE 'native_mail_%'"
+    ).first<{ count: number }>();
+    expect(nativeTables?.count).toBe(7);
+  }, 30_000);
 });
 
 async function applyMigrations(): Promise<void> {
