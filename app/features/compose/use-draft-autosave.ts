@@ -5,11 +5,13 @@ import type { Draft } from "@/features/drafts/types";
 import type { SendingIdentity } from "./compose-fields";
 import {
   type DraftSaveState,
+  draftRecoveryKey,
   normalizeDraftHtml,
   recipientInputsAreValid,
   serializeDraft,
   splitRecipients
 } from "./compose-state";
+import { removeDraftRecovery, writeDraftRecovery } from "./draft-recovery";
 import { DraftSaveQueue } from "./draft-save-queue";
 
 type DraftAutosaveOptions = {
@@ -54,6 +56,18 @@ export function useDraftAutosave(options: DraftAutosaveOptions) {
     setDraft,
     setSaveState
   } = options;
+  const [retry, setRetry] = React.useState(0);
+  React.useEffect(() => {
+    const retrySave = (): void => setRetry((value) => value + 1);
+    window.addEventListener("online", retrySave);
+    window.addEventListener("sovereign-mail:retry-draft", retrySave);
+    return () => {
+      window.removeEventListener("online", retrySave);
+      window.removeEventListener("sovereign-mail:retry-draft", retrySave);
+    };
+  }, []);
+  const lastRetry = React.useRef(0);
+  const deviceSaved = React.useRef(false);
   const draftRef = React.useRef<Draft | null>(null);
   const lastSaved = React.useRef("");
   const latestSnapshot = React.useRef("");
@@ -81,21 +95,23 @@ export function useDraftAutosave(options: DraftAutosaveOptions) {
 
   React.useEffect(() => {
     if (!open || !recoveryKey || !initialized.current) return;
-    localStorage.setItem(
-      recoveryKey,
-      JSON.stringify({
-        from,
-        to,
-        cc,
-        bcc,
-        subject,
-        text,
-        html,
-        signatureMode,
-        signatureId,
-        savedAt: Date.now()
-      })
-    );
+    if (
+      serializeDraft(from, to, cc, bcc, subject, text, html, signatureMode, signatureId) ===
+      lastSaved.current
+    )
+      return;
+    deviceSaved.current = writeDraftRecovery(recoveryKey, {
+      from,
+      to,
+      cc,
+      bcc,
+      subject,
+      text,
+      html,
+      signatureMode,
+      signatureId,
+      savedAt: Date.now()
+    });
   }, [
     open,
     initialized,
@@ -134,47 +150,57 @@ export function useDraftAutosave(options: DraftAutosaveOptions) {
       return;
     }
     setSaveState("saving");
-    const timer = window.setTimeout(() => {
-      void saveQueue.current.enqueue(async () => {
-        const current = draftRef.current;
-        if (
-          !current ||
-          !initialized.current ||
-          snapshot !== latestSnapshot.current ||
-          snapshot === lastSaved.current
-        ) {
-          if (latestSnapshot.current === lastSaved.current) setSaveState("saved");
-          return;
-        }
-        try {
-          const next = await updateDraft(current.id, {
-            mailboxId: identities.find((identity) => identity.address === from)?.mailboxId ?? null,
-            replyToMessageId,
-            forwardOfMessageId,
-            signatureMode,
-            signatureId,
-            from,
-            to: splitRecipients(to),
-            cc: splitRecipients(cc),
-            bcc: splitRecipients(bcc),
-            subject,
-            text,
-            html: normalizeDraftHtml(text, html),
-            version: current.version
-          });
-          draftRef.current = next;
-          lastSaved.current = snapshot;
-          if (recoveryKey) localStorage.removeItem(recoveryKey);
-          setDraft(next);
-          setSaveState(latestSnapshot.current === snapshot ? "saved" : "saving");
-        } catch (error) {
-          setSaveState("error");
-          toast.error(error instanceof Error ? error.message : "Draft save failed.");
-        }
-      });
-    }, 800);
+    const retrying = retry !== lastRetry.current;
+    lastRetry.current = retry;
+    const timer = window.setTimeout(
+      () => {
+        void saveQueue.current.enqueue(async () => {
+          const current = draftRef.current;
+          if (
+            !current ||
+            !initialized.current ||
+            snapshot !== latestSnapshot.current ||
+            snapshot === lastSaved.current
+          ) {
+            if (latestSnapshot.current === lastSaved.current) setSaveState("saved");
+            return;
+          }
+          try {
+            const next = await updateDraft(current.id, {
+              mailboxId:
+                identities.find((identity) => identity.address === from)?.mailboxId ?? null,
+              replyToMessageId,
+              forwardOfMessageId,
+              signatureMode,
+              signatureId,
+              from,
+              to: splitRecipients(to),
+              cc: splitRecipients(cc),
+              bcc: splitRecipients(bcc),
+              subject,
+              text,
+              html: normalizeDraftHtml(text, html),
+              version: current.version
+            });
+            draftRef.current = next;
+            lastSaved.current = snapshot;
+            if (recoveryKey && latestSnapshot.current === snapshot) {
+              removeDraftRecovery(recoveryKey);
+              removeDraftRecovery(draftRecoveryKey(current.id));
+            }
+            setDraft(next);
+            setSaveState(latestSnapshot.current === snapshot ? "saved" : "saving");
+          } catch (error) {
+            setSaveState(deviceSaved.current ? "local" : "error");
+            toast.error(error instanceof Error ? error.message : "Draft save failed.");
+          }
+        });
+      },
+      retrying ? 0 : 800
+    );
     return () => window.clearTimeout(timer);
   }, [
+    retry,
     open,
     initialized,
     draft,

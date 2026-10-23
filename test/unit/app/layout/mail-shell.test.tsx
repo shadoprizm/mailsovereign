@@ -55,7 +55,8 @@ describe("mail shell", () => {
       />
     );
 
-    expect(html).toContain("h-14 w-full");
+    expect(html).toContain("h-16 w-full");
+    expect(html).toContain("md:h-14");
     expect(html).toContain("relative min-w-0 max-w-xl flex-1");
     expect(html).toContain("ml-auto flex shrink-0 items-center gap-2");
     expect(html).toContain("Search mail");
@@ -168,7 +169,7 @@ describe("mail shell", () => {
 
     expect(html).toContain('aria-label="Open navigation"');
     expect(html).toContain('title="Open navigation"');
-    expect(html).toContain("size-11");
+    expect(html).toContain("size-10");
     expect(html).toContain("md:hidden");
     expect(html).not.toContain('role="combobox"');
     expect(html).not.toContain("Catch-all");
@@ -373,7 +374,7 @@ describe("mail shell", () => {
     expect(html).not.toContain("Pro");
   });
 
-  it("renders Compose as a non-modal responsive work surface", () => {
+  it("renders Compose as a responsive surface with compact dialog semantics", () => {
     const html = renderToStaticMarkup(
       <ComposeWindow open status="Draft saved" title="New message" onOpenChange={() => undefined}>
         <div>Draft fields</div>
@@ -381,7 +382,7 @@ describe("mail shell", () => {
     );
 
     expect(html).toContain('role="dialog"');
-    expect(html).toContain('aria-modal="false"');
+    expect(html).toContain('aria-modal="true"');
     expect(html).toContain("fixed inset-0");
     expect(html).toContain("md:bottom-0");
     expect(html).toContain('aria-label="Minimize compose"');

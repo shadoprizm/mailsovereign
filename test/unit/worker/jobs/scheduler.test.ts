@@ -25,11 +25,15 @@ function environment(verified = true) {
     created_at: timestamp,
     updated_at: timestamp
   };
-  const all = vi.fn().mockResolvedValue({ results: [row] });
-  const prepare = vi.fn(() => ({ all }));
+  const prepare = vi.fn((sql: string) => ({
+    all: vi.fn().mockResolvedValue({
+      results: sql.includes("provider_import_purges") ? [] : [row]
+    })
+  }));
   const send = vi.fn().mockResolvedValue(undefined);
   return {
     env: { DB: { prepare }, SOVEREIGN_MAIL_JOBS: { send } } as never,
+    prepare,
     send
   };
 }
@@ -52,5 +56,20 @@ describe("provider synchronization schedule", () => {
     await worker.scheduled({ cron: "*/5 * * * *" } as ScheduledController, env);
 
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it("resumes pending provider purges on the five-minute trigger", async () => {
+    const { env, prepare, send } = environment(false);
+    prepare.mockImplementation((sql: string) => ({
+      all: vi.fn().mockResolvedValue({
+        results: sql.includes("provider_import_purges") ? [{ id: "ppurge_one" }] : []
+      })
+    }));
+
+    await worker.scheduled({ cron: "*/5 * * * *" } as ScheduledController, env);
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "provider-purge", purgeId: "ppurge_one" })
+    );
   });
 });

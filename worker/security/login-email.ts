@@ -30,7 +30,7 @@ export async function assertLoginEmailOutsideWorkspace(
   const domain = loginEmailDomain(email);
   if (!domain) return;
   const managed = await db
-    .prepare("SELECT 1 AS matched FROM mail_domains WHERE name = ? LIMIT 1")
+    .prepare("SELECT 1 AS matched FROM mail_domains WHERE name = ? AND kind = 'managed' LIMIT 1")
     .bind(domain)
     .first<{ matched: number }>();
   if (managed) {

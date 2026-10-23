@@ -1,6 +1,27 @@
 PRAGMA foreign_keys = OFF;
 
+DROP TABLE IF EXISTS native_mail_submissions;
+DROP TABLE IF EXISTS native_mail_subscriptions;
+DROP TABLE IF EXISTS native_mail_sessions;
+DROP TABLE IF EXISTS native_mail_passwords;
+DROP TABLE IF EXISTS native_mail_journal;
+DROP TABLE IF EXISTS native_mail_entries;
+DROP TABLE IF EXISTS native_mail_folders;
+
+DROP TABLE IF EXISTS transactional_sends;
+DROP TABLE IF EXISTS service_mailbox_grants;
+DROP TABLE IF EXISTS service_credentials;
+DROP TABLE IF EXISTS service_applications;
 DROP TABLE IF EXISTS oauthClientAssertion;
+DROP TABLE IF EXISTS thread_labels;
+DROP TABLE IF EXISTS mail_organization_bulk_previous_labels;
+DROP TABLE IF EXISTS mail_organization_bulk_items;
+DROP TABLE IF EXISTS mail_organization_bulk_targets;
+DROP TABLE IF EXISTS mail_organization_bulk_runs;
+DROP TABLE IF EXISTS mail_organization_run_items;
+DROP TABLE IF EXISTS mail_organization_runs;
+DROP TABLE IF EXISTS mail_labels;
+DROP TABLE IF EXISTS ai_provider_connection;
 DROP TABLE IF EXISTS ai_usage_events;
 DROP TABLE IF EXISTS ai_credit_ledger;
 DROP TABLE IF EXISTS ai_subscription;
@@ -28,6 +49,9 @@ DROP TABLE IF EXISTS draft_attachments;
 DROP TABLE IF EXISTS drafts;
 DROP TABLE IF EXISTS email_signatures;
 DROP TABLE IF EXISTS domain_setup_operations;
+DROP TABLE IF EXISTS provider_purge_objects;
+DROP TABLE IF EXISTS provider_import_purges;
+DROP TABLE IF EXISTS provider_sync_quarantine;
 DROP TABLE IF EXISTS provider_sync_state;
 DROP TABLE IF EXISTS provider_connections;
 DROP TABLE IF EXISTS domain_migration_plans;

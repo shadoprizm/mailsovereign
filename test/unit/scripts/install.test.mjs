@@ -55,6 +55,8 @@ describe("Sovereign Mail installation resources", () => {
       CLOUDFLARE_OAUTH_MODE: "customer"
     });
     expect(config.observability.logs.invocation_logs).toBe(false);
+    expect(config.limits).toEqual({ cpu_ms: 300_000 });
+    expect(config.queues.consumers[0].max_batch_size).toBe(1);
     expect(config.secrets.required).toEqual([
       "BETTER_AUTH_SECRET",
       "PROVIDER_CREDENTIAL_KEY",

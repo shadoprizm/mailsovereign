@@ -48,10 +48,13 @@ export function DomainTable({
         {domains.map((domain) => (
           <TableRow key={domain.id}>
             <TableCell>
-              <span className="block font-medium">{domain.name}</span>
+              <span className="flex items-center gap-2 font-medium">
+                {domain.name}
+                {domain.kind === "external" ? <Badge variant="outline">Provider</Badge> : null}
+              </span>
               <span className="mt-1 block text-xs text-muted-foreground sm:hidden">
                 Receive {domain.receivingStatus} · Send {domain.sendingStatus} · DNS{" "}
-                {domain.dnsStatus}
+                {domain.kind === "external" ? "external" : domain.dnsStatus}
               </span>
             </TableCell>
             <TableCell className="hidden sm:table-cell">
@@ -61,7 +64,11 @@ export function DomainTable({
               <ReadinessStatus status={domain.sendingStatus} />
             </TableCell>
             <TableCell className="hidden sm:table-cell">
-              <ReadinessStatus status={domain.dnsStatus} />
+              {domain.kind === "external" ? (
+                <span className="text-muted-foreground">External</span>
+              ) : (
+                <ReadinessStatus status={domain.dnsStatus} />
+              )}
             </TableCell>
             <TableCell>
               <Badge variant={domain.isEnabled ? "secondary" : "outline"}>

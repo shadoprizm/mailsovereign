@@ -22,6 +22,14 @@ import aiAccessMigration from "../../../migrations/0017_ai_access.sql?raw";
 import contactsMigration from "../../../migrations/0018_contacts.sql?raw";
 import aiWritingProfilesMigration from "../../../migrations/0019_ai_writing_profiles.sql?raw";
 import sovereignProductIdentityMigration from "../../../migrations/0020_sovereign_product_identity.sql?raw";
+import providerImportSafetyMigration from "../../../migrations/0021_provider_import_safety.sql?raw";
+import externalProviderDomainsMigration from "../../../migrations/0022_external_provider_domains.sql?raw";
+import mailOrganizationMigration from "../../../migrations/0023_mail_organization.sql?raw";
+import transactionalEmailMigration from "../../../migrations/0024_transactional_email.sql?raw";
+import bulkMailOrganizationMigration from "../../../migrations/0025_bulk_mail_organization.sql?raw";
+import aiProviderMigration from "../../../migrations/0026_ai_provider_connection.sql?raw";
+import nativeMailMigration from "../../../migrations/0027_native_mail_clients.sql?raw";
+import nativeMailSchemaState from "../../../migrations/0028_native_mail_schema_state.sql?raw";
 import { buildSeedSql } from "../../../scripts/local-seed-fixture.mjs";
 import resetSql from "../../../scripts/sovereign-mail/reset-d1.sql?raw";
 import { migrationStatements } from "./migration-statements";
@@ -47,7 +55,15 @@ const migrations = [
   aiAccessMigration,
   contactsMigration,
   aiWritingProfilesMigration,
-  sovereignProductIdentityMigration
+  sovereignProductIdentityMigration,
+  providerImportSafetyMigration,
+  externalProviderDomainsMigration,
+  mailOrganizationMigration,
+  transactionalEmailMigration,
+  bulkMailOrganizationMigration,
+  aiProviderMigration,
+  nativeMailMigration,
+  nativeMailSchemaState
 ];
 
 describe("local database reset", () => {
@@ -56,8 +72,9 @@ describe("local database reset", () => {
     await applyStatements(
       buildSeedSql(await hashPassword("local-seed-password"), new Date("2026-08-14T18:00:00.000Z"))
     );
-  });
+  }, 30_000);
 
+  // Reapplying the complete schema can exceed five seconds on hosted Windows runners.
   it("removes current data and supports a fresh migration", async () => {
     await applyStatements(resetSql);
     await applyMigrations();
@@ -81,6 +98,19 @@ describe("local database reset", () => {
        WHERE name IN ('mailbox_address', 'verified_at', 'last_synced_at', 'last_error_code')`
     ).first<{ count: number }>();
     expect(providerColumns?.count).toBe(4);
+    const importSafety = await env.DB.prepare(
+      `SELECT
+        (SELECT COUNT(*) FROM pragma_table_info('messages')
+         WHERE name = 'source_provider_connection_id') AS source_column,
+        (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'
+         AND name IN ('provider_sync_quarantine', 'provider_import_purges',
+                      'provider_purge_objects')) AS safety_tables`
+    ).first<{ source_column: number; safety_tables: number }>();
+    expect(importSafety).toEqual({ source_column: 1, safety_tables: 3 });
+    const externalDomainKind = await env.DB.prepare(
+      `SELECT COUNT(*) AS count FROM pragma_table_info('mail_domains') WHERE name = 'kind'`
+    ).first<{ count: number }>();
+    expect(externalDomainKind?.count).toBe(1);
     const signatureTables = await env.DB.prepare(
       `SELECT COUNT(*) AS count FROM sqlite_master
        WHERE type = 'table' AND name IN ('email_signatures', 'email_signature_defaults')`
@@ -102,6 +132,27 @@ describe("local database reset", () => {
        WHERE type = 'table' AND name = 'ai_writing_profiles'`
     ).first<{ count: number }>();
     expect(writingProfileTables?.count).toBe(1);
+    const organizationTables = await env.DB.prepare(
+      `SELECT COUNT(*) AS count FROM sqlite_master
+       WHERE type = 'table' AND name IN
+         ('mail_labels', 'thread_labels', 'mail_organization_runs',
+          'mail_organization_run_items')`
+    ).first<{ count: number }>();
+    expect(organizationTables?.count).toBe(4);
+    const bulkOrganizationTables = await env.DB.prepare(
+      `SELECT COUNT(*) AS count FROM sqlite_master
+       WHERE type = 'table' AND name IN
+         ('mail_organization_bulk_runs', 'mail_organization_bulk_targets',
+          'mail_organization_bulk_items', 'mail_organization_bulk_previous_labels')`
+    ).first<{ count: number }>();
+    expect(bulkOrganizationTables?.count).toBe(4);
+    const transactionalTables = await env.DB.prepare(
+      `SELECT COUNT(*) AS count FROM sqlite_master
+       WHERE type = 'table' AND name IN
+         ('service_applications', 'service_credentials', 'service_mailbox_grants',
+          'transactional_sends')`
+    ).first<{ count: number }>();
+    expect(transactionalTables?.count).toBe(4);
     const productIdentity = await env.DB.prepare(
       "SELECT value FROM sovereign_mail_schema_state WHERE key = 'product'"
     ).first<{ value: string }>();
@@ -111,9 +162,13 @@ describe("local database reset", () => {
     ).first<{ product: string; installed_schema_version: number }>();
     expect(releaseIdentity).toEqual({
       product: "sovereign-mail",
-      installed_schema_version: 20
+      installed_schema_version: 28
     });
-  });
+    const nativeTables = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name LIKE 'native_mail_%'"
+    ).first<{ count: number }>();
+    expect(nativeTables?.count).toBe(7);
+  }, 30_000);
 });
 
 async function applyMigrations(): Promise<void> {

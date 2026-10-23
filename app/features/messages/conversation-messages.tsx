@@ -22,16 +22,19 @@ export function ConversationMessages({
   const threadFingerprint = messages.map((message) => message.id).join(":");
   const [expandedThread, setExpandedThread] = React.useState<string | null>(null);
   const showMiddle = expandedThread === threadFingerprint;
+  const threadClassName = compact
+    ? "divide-y divide-border"
+    : "grid gap-3 p-3 md:block md:divide-y md:divide-border md:p-0";
 
   if (hiddenCount === 0) {
-    return <div className="divide-y divide-border">{messages.map(renderMessage)}</div>;
+    return <div className={threadClassName}>{messages.map(renderMessage)}</div>;
   }
 
   const first = messages[0];
   const middle = messages.slice(1, -1);
   const final = messages.at(-1);
   return (
-    <div className="divide-y divide-border">
+    <div className={threadClassName}>
       {first ? renderMessage(first) : null}
       <ThreadMessagesDivider
         count={hiddenCount}
@@ -49,7 +52,12 @@ export function ConversationMessages({
     const timestamp = message.receivedAt ?? message.sentAt ?? message.createdAt;
     return (
       <article
-        className={cn("px-4 py-5 sm:px-6 sm:py-6", compact && "px-4 py-4 sm:px-4 sm:py-4")}
+        className={cn(
+          "px-4 py-5 sm:px-6 sm:py-6",
+          compact
+            ? "px-4 py-4 sm:px-4 sm:py-4"
+            : "rounded-xl border shadow-sm max-md:bg-card md:rounded-none md:border-0 md:shadow-none"
+        )}
         data-thread-message-id={message.id}
         key={message.id}
       >

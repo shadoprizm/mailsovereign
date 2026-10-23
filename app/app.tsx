@@ -1,5 +1,4 @@
 import * as React from "react";
-
 import { AppShell } from "@/components/layout/app-shell";
 import { Toaster } from "@/components/ui/sonner";
 import { getCurrentUser } from "@/features/auth/api";
@@ -15,7 +14,13 @@ import { useDrafts } from "@/features/drafts/use-drafts";
 import { InboxPage } from "@/features/inbox/inbox-page";
 import { listMailboxes } from "@/features/mailboxes/api";
 import type { Mailbox } from "@/features/mailboxes/types";
+import {
+  type ConversationFilters,
+  createEmptyConversationFilters
+} from "@/features/messages/conversation-filters";
 import { useMailSync } from "@/features/messages/use-mail-sync";
+import { MobilePreferencesProvider } from "@/features/mobile/mobile-preferences";
+import { useMailLabels } from "@/features/organization/use-mail-labels";
 import { SettingsPage } from "@/features/settings/settings-page";
 import { getSetupStatus } from "@/features/setup/api";
 import { SetupPage } from "@/features/setup/setup-page";
@@ -23,6 +28,7 @@ import type { SetupStatus } from "@/features/setup/types";
 import { useUpdateMonitor } from "@/features/updates/use-update-monitor";
 import { listUsers } from "@/features/users/api";
 import type { WorkspaceUser } from "@/features/users/types";
+import { useVisibleViewport } from "@/hooks/use-visible-viewport";
 import { sovereignProductConfig } from "@/lib/product-config";
 import {
   type FolderId,
@@ -45,6 +51,7 @@ const ContactsPage = React.lazy(() =>
 );
 
 export function App(): React.ReactElement {
+  useVisibleViewport();
   const invitationSetup = isPublicAuthenticationPath(window.location.pathname);
   const [setup, setSetup] = React.useState<SetupStatus | null>(null);
   const [user, setUser] = React.useState<CurrentUser | null>(null);
@@ -52,6 +59,10 @@ export function App(): React.ReactElement {
   const [users, setUsers] = React.useState<WorkspaceUser[]>([]);
   const [mailboxId, setMailboxId] = React.useState("all");
   const [search, setSearch] = React.useState("");
+  const [labelId, setLabelId] = React.useState<string | null>(null);
+  const [conversationFilters, setConversationFilters] = React.useState<ConversationFilters>(
+    createEmptyConversationFilters
+  );
   const [composeOpen, setComposeOpen] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
   const { navigate, route } = useAppRoute(setup?.isComplete);
@@ -68,6 +79,7 @@ export function App(): React.ReactElement {
   const settingsTab: SettingsTabId = route.kind === "settings" ? route.tab : "mailboxes";
   const currentUserId = user?.passwordSetupRequired ? null : (user?.id ?? null);
   const draftState = useDrafts(currentUserId);
+  const mailLabels = useMailLabels(currentUserId);
   const selectedDraft =
     selectedDraftId === null
       ? null
@@ -86,10 +98,22 @@ export function App(): React.ReactElement {
   );
   const mailSync = useMailSync({
     activeFolder,
+    filters: conversationFilters,
+    labelId,
     mailboxId,
     search,
     userId: currentUserId
   });
+
+  React.useEffect(() => {
+    if (
+      labelId &&
+      mailLabels.labels.length &&
+      !mailLabels.labels.some((label) => label.id === labelId)
+    ) {
+      setLabelId(null);
+    }
+  }, [labelId, mailLabels.labels]);
 
   const loadWorkspace = React.useCallback(async (currentUser: CurrentUser) => {
     const [nextSetup, nextMailboxes] = await Promise.all([getSetupStatus(), listMailboxes()]);
@@ -188,9 +212,10 @@ export function App(): React.ReactElement {
   }
 
   return (
-    <>
+    <MobilePreferencesProvider accountId={user.id} key={user.id}>
       <AppShell
         activeFolder={activeFolder}
+        reading={Boolean(selectedId || selectedDraftId)}
         draftCount={draftState.drafts.length}
         mailboxId={mailboxId}
         mailboxes={contentMailboxes}
@@ -207,6 +232,7 @@ export function App(): React.ReactElement {
           setComposeOpen(true);
         }}
         onFolderChange={(folder) => {
+          setLabelId(null);
           navigate(
             folder === "settings"
               ? { kind: "settings", tab: "mailboxes" }
@@ -267,17 +293,27 @@ export function App(): React.ReactElement {
             ) : (
               <InboxPage
                 activeFolder={activeFolder as MailFolderId}
+                activeLabelId={labelId}
                 conversations={mailSync.conversations}
+                filters={conversationFilters}
+                mailboxId={mailboxId}
+                search={search}
                 defaultFromMailboxId={user.defaultFromMailboxId}
                 hasMore={mailSync.hasMore}
                 isLoadingMore={mailSync.isLoadingMore}
                 loadMoreError={mailSync.loadMoreError}
                 mailboxes={contentMailboxes}
+                labels={mailLabels.labels}
                 selectedId={selectedId}
                 onDraftsChange={() => void draftState.refresh().catch(() => undefined)}
                 onConversationAction={mailSync.applyConversationAction}
+                onFiltersChange={setConversationFilters}
                 onLoadMore={() => void mailSync.loadMore()}
-                onRefresh={() => mailSync.refresh()}
+                onLabelChange={setLabelId}
+                onLabelsChanged={async () => {
+                  await Promise.all([mailLabels.refresh(), mailSync.refresh()]);
+                }}
+                onRefresh={(resetPages) => mailSync.refresh(resetPages)}
                 onMessageRouteChange={(folder, messageId) =>
                   navigate({ kind: "mail", folder, messageId })
                 }
@@ -317,7 +353,7 @@ export function App(): React.ReactElement {
         </React.Suspense>
       ) : null}
       <Toaster />
-    </>
+    </MobilePreferencesProvider>
   );
 }
 

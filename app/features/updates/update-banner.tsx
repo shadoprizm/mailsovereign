@@ -20,10 +20,10 @@ export function UpdateBanner({
   return (
     <div
       aria-live="polite"
-      className="flex min-h-10 shrink-0 items-center justify-between gap-3 border-b bg-muted/45 px-3 text-xs md:px-4"
+      className="mx-3 mt-3 flex min-h-12 shrink-0 items-center justify-between gap-3 rounded-xl border bg-card px-3 py-2 text-xs shadow-sm md:mx-0 md:mt-0 md:min-h-10 md:rounded-none md:border-x-0 md:border-t-0 md:bg-muted/45 md:px-4 md:py-0 md:shadow-none"
       role="status"
     >
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         {inProgress ? (
           <Spinner
             aria-hidden="true"
@@ -33,12 +33,17 @@ export function UpdateBanner({
         ) : (
           <ArrowUpCircle aria-hidden="true" className="size-4 text-muted-foreground" />
         )}
-        <span>
+        <span className="min-w-0 leading-5">
           <strong>{inProgress ? "Update in progress" : "Update available"}</strong>
           {targetVersion ? ` · Sovereign Mail ${targetVersion}` : null}
         </span>
       </div>
-      <Button className="h-7 px-3 text-xs" onClick={onOpen} type="button" variant="outline">
+      <Button
+        className="h-9 shrink-0 px-3 text-xs md:h-7"
+        onClick={onOpen}
+        type="button"
+        variant="outline"
+      >
         {inProgress ? "View progress" : "Review update"}
       </Button>
     </div>

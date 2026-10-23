@@ -156,3 +156,29 @@ describe("cloudflare mail transport adapter", () => {
     }
   });
 });
+
+describe("Cloudflare transactional error classification", () => {
+  it.each([
+    ["E_RATE_LIMIT_EXCEEDED", true, true],
+    ["E_DAILY_LIMIT_EXCEEDED", true, true],
+    ["E_SENDER_NOT_VERIFIED", true, false],
+    ["E_HEADER_NOT_ALLOWED", true, false],
+    ["E_INTERNAL_SERVER_ERROR", false, false],
+    ["E_DELIVERY_FAILED", false, false],
+    ["UNKNOWN", false, false]
+  ])("classifies %s without exposing provider diagnostics", async (code, definite, retryable) => {
+    const send = vi
+      .fn()
+      .mockRejectedValue(Object.assign(new Error("sensitive provider diagnostics"), { code }));
+    const transport = createCloudflareMailTransport({ send } as unknown as SendEmail);
+    await expect(transport.send(minimalEmail)).rejects.toMatchObject({
+      definitelyNotAccepted: definite,
+      retryable
+    });
+    try {
+      await transport.send(minimalEmail);
+    } catch (error) {
+      expect(String(error)).not.toContain("sensitive provider diagnostics");
+    }
+  });
+});

@@ -132,9 +132,10 @@ export function ComposeAi(props: ComposeAiProps): React.ReactElement {
             <div className="rounded-md border bg-background p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs text-muted-foreground">
-                  Proposal only · {proposal.creditsCharged} credit
-                  {proposal.creditsCharged === 1 ? "" : "s"} used ·{" "}
-                  {proposal.creditsRemaining.toLocaleString()} remaining
+                  Proposal only ·{" "}
+                  {proposal.creditsCharged === 0
+                    ? "Your AI provider · no Sovereign credits used"
+                    : `${proposal.creditsCharged} credits used · ${proposal.creditsRemaining.toLocaleString()} remaining`}
                 </p>
                 <Button
                   size="sm"

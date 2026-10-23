@@ -46,8 +46,10 @@ updateRoutes.post("/apply", async (c) => {
   requireRecentSessionForEnvironment(auth, c.env);
   assertUpdatesEnabled(c.env);
   const grant = await resolveRuntimeCloudflareGrant(c.req.raw, c.env);
-  const result = await triggerUpdate(c.env, grant);
-  await revokeRuntimeCloudflareGrant(grant, c.env);
   c.header("set-cookie", clearRuntimeCloudflareGrantCookie());
-  return c.json(result, 202);
+  try {
+    return c.json(await triggerUpdate(c.env, grant), 202);
+  } finally {
+    await revokeRuntimeCloudflareGrant(grant, c.env);
+  }
 });

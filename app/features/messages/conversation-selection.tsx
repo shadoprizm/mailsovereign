@@ -1,35 +1,46 @@
-import { Archive, Trash2, X } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import type { MailFolderId } from "@/lib/routes";
-import { deleteConversation, runConversationAction } from "./api";
+import {
+  type ConversationSelectionScope,
+  deleteConversation,
+  runConversationAction,
+  setMatchingConversationsReadState
+} from "./api";
 import { DeleteConversationDialog } from "./delete-conversation-dialog";
 import type { ConversationAction, ConversationSummary } from "./types";
 
-type BulkConversationOperation = "archive" | "delete" | "trash";
+type BulkConversationOperation = "archive" | "delete" | "read" | "trash" | "unread";
 
 type ConversationSelectionOptions = {
   activeFolder: MailFolderId;
   conversations: ConversationSummary[];
+  scope: ConversationSelectionScope;
+  totalCount: number | null;
   selectedThreadId: string | null;
   onConversationAction: (threadId: string, action: ConversationAction, affected: number) => void;
   onMessageRouteChange: (folder: MailFolderId, messageId: string | null) => void;
-  onRefresh: () => Promise<void> | void;
+  onRefresh: (resetPages?: boolean) => Promise<void> | void;
 };
 
 export type ConversationSelection = {
+  allMatching: boolean;
+  selectAllMatching: () => void;
+  totalCount: number | null;
   bulkPending: boolean;
   close: () => void;
   deleteOpen: boolean;
   enter: () => void;
+  labelOpen: boolean;
+  organizeOpen: boolean;
   runOperation: (operation: BulkConversationOperation) => Promise<void>;
   selectedConversations: ConversationSummary[];
   selectedThreadIds: ReadonlySet<string>;
   selectionMode: boolean;
   setDeleteOpen: (open: boolean) => void;
+  setLabelOpen: (open: boolean) => void;
+  setOrganizeOpen: (open: boolean) => void;
   setSelected: (threadId: string, selected: boolean) => void;
   toggleAll: (selected: boolean) => void;
 };
@@ -37,28 +48,37 @@ export type ConversationSelection = {
 export function useConversationSelection({
   activeFolder,
   conversations,
+  scope,
+  totalCount,
   selectedThreadId,
   onConversationAction,
   onMessageRouteChange,
   onRefresh
 }: ConversationSelectionOptions): ConversationSelection {
+  const [allMatching, setAllMatching] = React.useState(false);
+  const scopeKey = JSON.stringify(scope);
   const [selectionMode, setSelectionMode] = React.useState(false);
   const [selectedThreadIds, setSelectedThreadIds] = React.useState<Set<string>>(() => new Set());
   const [bulkPending, setBulkPending] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
-  const selectionFolderRef = React.useRef(activeFolder);
+  const [labelOpen, setLabelOpen] = React.useState(false);
+  const [organizeOpen, setOrganizeOpen] = React.useState(false);
+  const selectionScopeRef = React.useRef(scopeKey);
   const selectedConversations = React.useMemo(
     () => conversations.filter((conversation) => selectedThreadIds.has(conversation.threadId)),
     [conversations, selectedThreadIds]
   );
 
   React.useEffect(() => {
-    if (selectionFolderRef.current === activeFolder) return;
-    selectionFolderRef.current = activeFolder;
+    if (selectionScopeRef.current === scopeKey) return;
+    selectionScopeRef.current = scopeKey;
+    setAllMatching(false);
     setSelectionMode(false);
     setSelectedThreadIds(new Set());
     setDeleteOpen(false);
-  }, [activeFolder]);
+    setLabelOpen(false);
+    setOrganizeOpen(false);
+  }, [scopeKey]);
 
   React.useEffect(() => {
     const loadedThreadIds = new Set(conversations.map((conversation) => conversation.threadId));
@@ -69,14 +89,19 @@ export function useConversationSelection({
   }, [conversations]);
 
   function close(): void {
+    setAllMatching(false);
     setSelectionMode(false);
     setSelectedThreadIds(new Set());
     setDeleteOpen(false);
+    setLabelOpen(false);
+    setOrganizeOpen(false);
   }
 
   function setSelected(threadId: string, selected: boolean): void {
+    if (bulkPending) return;
+    setAllMatching(false);
     setSelectedThreadIds((current) => {
-      const next = new Set(current);
+      const next = new Set(allMatching ? conversations.map((item) => item.threadId) : current);
       if (selected) next.add(threadId);
       else next.delete(threadId);
       return next;
@@ -84,7 +109,33 @@ export function useConversationSelection({
   }
 
   async function runOperation(operation: BulkConversationOperation): Promise<void> {
-    if (bulkPending || selectedConversations.length === 0) return;
+    if (bulkPending) return;
+    if (allMatching) {
+      if (operation !== "read" && operation !== "unread") return;
+      setBulkPending(true);
+      try {
+        const result = await setMatchingConversationsReadState(scope, operation);
+        if (selectionScopeRef.current === scopeKey) {
+          for (const conversation of conversations) {
+            onConversationAction(conversation.threadId, operation, 1);
+          }
+          onMessageRouteChange(activeFolder, null);
+          close();
+        }
+        toast.success(
+          `${result.conversationCount} ${pluralize("conversation", result.conversationCount)} marked as ${operation}.`
+        );
+        await Promise.resolve(onRefresh(true)).catch(() => {
+          toast.error("Mail was updated. Refresh to see the latest counts.");
+        });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Conversations could not be updated.");
+      } finally {
+        setBulkPending(false);
+      }
+      return;
+    }
+    if (selectedConversations.length === 0) return;
     const targets = selectedConversations;
     setBulkPending(true);
 
@@ -122,7 +173,7 @@ export function useConversationSelection({
       if (failedThreadIds.size > 0) {
         setSelectedThreadIds(failedThreadIds);
         const successfulCount = successfulThreadIds.size;
-        const failure = `${failedThreadIds.size} ${pluralize("conversation", failedThreadIds.size)} could not be ${operation === "delete" ? "deleted" : "moved"}.`;
+        const failure = `${failedThreadIds.size} ${pluralize("conversation", failedThreadIds.size)} could not be ${operationFailureDescription(operation)}.`;
         const message = successfulCount > 0 ? `${successfulCount} succeeded. ${failure}` : failure;
         if (operation === "delete") throw new Error(message);
         toast.error(message);
@@ -135,9 +186,13 @@ export function useConversationSelection({
       toast.success(
         operation === "archive"
           ? `${count} ${noun} archived.`
-          : operation === "trash"
-            ? `${count} ${noun} moved to Trash.`
-            : `${count} ${noun} deleted permanently.`
+          : operation === "read"
+            ? `${count} ${noun} marked as read.`
+            : operation === "unread"
+              ? `${count} ${noun} marked as unread.`
+              : operation === "trash"
+                ? `${count} ${noun} moved to Trash.`
+                : `${count} ${noun} deleted permanently.`
       );
     } finally {
       setBulkPending(false);
@@ -145,17 +200,29 @@ export function useConversationSelection({
   }
 
   return {
+    allMatching,
+    selectAllMatching: () => {
+      if (!bulkPending) setAllMatching(true);
+    },
+    totalCount,
     bulkPending,
     close,
     deleteOpen,
     enter: () => setSelectionMode(true),
+    labelOpen,
+    organizeOpen,
     runOperation,
     selectedConversations,
-    selectedThreadIds,
+    selectedThreadIds: allMatching
+      ? new Set(conversations.map((conversation) => conversation.threadId))
+      : selectedThreadIds,
     selectionMode,
     setDeleteOpen,
+    setLabelOpen,
+    setOrganizeOpen,
     setSelected,
     toggleAll: (selected) => {
+      setAllMatching(false);
       setSelectedThreadIds(
         selected ? new Set(conversations.map((conversation) => conversation.threadId)) : new Set()
       );
@@ -163,113 +230,11 @@ export function useConversationSelection({
   };
 }
 
-export function ConversationListHeader({
-  activeFolder,
-  activeLabel,
-  conversationCountLabel,
-  conversationCount,
-  selection
-}: {
-  activeFolder: MailFolderId;
-  activeLabel: string;
-  conversationCountLabel: string | null;
-  conversationCount: number;
-  selection: ConversationSelection;
-}): React.ReactElement {
-  const selectedCount = selection.selectedConversations.length;
-  const allLoadedSelected = conversationCount > 0 && selectedCount === conversationCount;
-  const selectAllId = React.useId();
-
-  return (
-    <div className="flex h-12 shrink-0 items-center border-b px-3">
-      {selection.selectionMode ? (
-        <>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <Checkbox
-              aria-label="Select all loaded conversations"
-              checked={allLoadedSelected ? true : selectedCount > 0 ? "indeterminate" : false}
-              disabled={selection.bulkPending}
-              id={selectAllId}
-              onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-            />
-            <label
-              className="cursor-pointer whitespace-nowrap text-[11px] font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-50"
-              htmlFor={selectAllId}
-            >
-              Select all
-            </label>
-          </div>
-          <span
-            aria-live="polite"
-            className="ml-2 min-w-0 flex-1 whitespace-nowrap text-xs font-medium"
-          >
-            {selectedCount} selected
-          </span>
-          {activeFolder === "inbox" || activeFolder === "catchall" ? (
-            <SelectionAction
-              label="Archive selected conversations"
-              title="Move selected conversations to Archive"
-              disabled={selection.bulkPending || selectedCount === 0}
-              onClick={() => void selection.runOperation("archive")}
-            >
-              <Archive />
-            </SelectionAction>
-          ) : null}
-          {activeFolder === "trash" ? (
-            <SelectionAction
-              destructive
-              label="Delete selected conversations permanently"
-              title="Delete selected conversations permanently"
-              disabled={selection.bulkPending || selectedCount === 0}
-              onClick={() => selection.setDeleteOpen(true)}
-            >
-              <Trash2 />
-            </SelectionAction>
-          ) : (
-            <SelectionAction
-              label="Move selected conversations to Trash"
-              title="Move selected conversations to Trash"
-              disabled={selection.bulkPending || selectedCount === 0}
-              onClick={() => void selection.runOperation("trash")}
-            >
-              <Trash2 />
-            </SelectionAction>
-          )}
-          <SelectionAction
-            label="Cancel conversation selection"
-            title="Cancel selection"
-            disabled={selection.bulkPending}
-            onClick={selection.close}
-          >
-            <X />
-          </SelectionAction>
-        </>
-      ) : (
-        <>
-          <h1 className="text-sm font-medium">
-            <span className="md:hidden">{activeLabel}</span>
-            <span className="hidden md:inline">Conversations</span>
-          </h1>
-          {conversationCountLabel ? (
-            <span className="ml-auto font-mono text-[11px] text-muted-foreground">
-              {conversationCountLabel}
-            </span>
-          ) : null}
-          {conversationCount > 0 ? (
-            <Button
-              className="ml-2 h-8 px-2 text-xs"
-              size="sm"
-              type="button"
-              variant="ghost"
-              onClick={selection.enter}
-            >
-              Select
-            </Button>
-          ) : null}
-        </>
-      )}
-    </div>
-  );
+function operationFailureDescription(operation: BulkConversationOperation): string {
+  if (operation === "delete") return "deleted";
+  if (operation === "read") return "marked as read";
+  if (operation === "unread") return "marked as unread";
+  return "moved";
 }
 
 export function ConversationSelectionDeleteDialog({
@@ -284,37 +249,6 @@ export function ConversationSelectionDeleteDialog({
       onConfirm={() => selection.runOperation("delete")}
       onOpenChange={selection.setDeleteOpen}
     />
-  );
-}
-
-function SelectionAction({
-  children,
-  destructive = false,
-  disabled,
-  label,
-  onClick,
-  title
-}: {
-  children: React.ReactNode;
-  destructive?: boolean;
-  disabled: boolean;
-  label: string;
-  onClick: () => void;
-  title: string;
-}): React.ReactElement {
-  return (
-    <Button
-      aria-label={label}
-      className={destructive ? "size-9 text-destructive hover:text-destructive" : "size-9"}
-      disabled={disabled}
-      size="icon"
-      title={title}
-      type="button"
-      variant="ghost"
-      onClick={onClick}
-    >
-      {children}
-    </Button>
   );
 }
 

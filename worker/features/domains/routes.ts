@@ -29,12 +29,7 @@ import {
   listCloudflareZones
 } from "../setup/cloudflare";
 import { upsertWorkspaceHost } from "../setup/queries";
-import {
-  findMailDomainByName,
-  listMailDomains,
-  updateMailDomainSettings,
-  upsertMailDomain
-} from "./queries";
+import { listMailDomains, updateMailDomainSettings, upsertMailDomain } from "./queries";
 import { removeUnusedMailDomain } from "./service";
 import {
   changePortalHostnameSchema,
@@ -154,9 +149,7 @@ domainRoutes.post("/provision", async (c) => {
   requireRole(auth, ["owner", "admin"]);
   requireRecentSessionForEnvironment(auth, c.env);
   const input = parseWith(provisionMailDomainSchema, await readJson(c.req.raw));
-  if (!(await findMailDomainByName(c.env.DB, input.name))) {
-    await assertDomainUnusedByLoginEmails(c.env.DB, input.name);
-  }
+  await assertDomainUnusedByLoginEmails(c.env.DB, input.name);
   const grant = await resolveRuntimeCloudflareGrant(c.req.raw, c.env);
   const result = await configureCloudflareDomain({
     apiToken: grant,

@@ -80,7 +80,7 @@ describe("conversation reader", () => {
 
     expect(html.indexOf("I cannot sign in.")).toBeLessThan(html.indexOf("We can help."));
     expect(html.indexOf("We can help.")).toBeLessThan(html.lastIndexOf(">Reply<"));
-    expect(html.match(/>Reply</g)).toHaveLength(3);
+    expect(html.match(/>Reply</g)).toHaveLength(4);
     expect(html.match(/>Forward</g)).toHaveLength(3);
     expect(html).toContain('data-compose-message-id="msg_1"');
     expect(html).toContain('data-compose-message-id="msg_2"');
@@ -129,7 +129,8 @@ describe("conversation reader", () => {
     expect(listHtml).toContain('data-mobile-view="message-list"');
     expect(listHtml).toContain('data-mobile-view="conversation"');
     expect(listHtml).toContain("h-full min-h-0 bg-background hidden");
-    expect(conversationHtml).toContain("h-full min-h-0 flex-col bg-card/35 hidden");
+    expect(conversationHtml).toContain("gap-0 bg-background");
+    expect(conversationHtml).toContain("md:bg-card/35");
     expect(conversationHtml).toContain("h-full min-h-0 bg-background block");
     expect(listHtml).toContain("Pull to refresh");
   });

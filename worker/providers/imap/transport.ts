@@ -11,11 +11,13 @@ export type SmtpFailureReason = "auth" | "rate_limited" | "unavailable" | "timeo
 // reason onto the provider taxonomy and never carries the detail forward.
 export class SmtpSubmitError extends Error {
   readonly reason: SmtpFailureReason;
+  readonly definitelyNotAccepted: boolean;
 
-  constructor(reason: SmtpFailureReason, detail: string) {
+  constructor(reason: SmtpFailureReason, detail: string, definitelyNotAccepted = false) {
     super(detail);
     this.name = "SmtpSubmitError";
     this.reason = reason;
+    this.definitelyNotAccepted = definitelyNotAccepted;
   }
 }
 
@@ -40,7 +42,7 @@ export function createImapSmtpMailTransport(
       } catch (cause) {
         if (cause instanceof SmtpSubmitError) {
           const code = reasonToCode[cause.reason] ?? "PROVIDER_SEND_REJECTED";
-          throw ProviderError.from(code, connection.id, cause);
+          throw new ProviderError(code, connection.id, cause.definitelyNotAccepted);
         }
         throw ProviderError.from("PROVIDER_SEND_REJECTED", connection.id, cause);
       }

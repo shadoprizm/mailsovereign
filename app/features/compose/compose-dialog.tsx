@@ -10,6 +10,7 @@ import {
 } from "@/features/drafts/api";
 import { DiscardDraftDialog } from "@/features/drafts/discard-draft-dialog";
 import type { Draft, DraftAttachment } from "@/features/drafts/types";
+import { useMobilePreferences } from "@/features/mobile/mobile-preferences";
 import { listSignaturePreferences } from "@/features/signatures/api";
 import {
   applySignatureToHtml,
@@ -22,7 +23,6 @@ import {
 } from "@/features/signatures/signature-content";
 import type { SignatureChoice, SignaturePreferences } from "@/features/signatures/types";
 import { playNotificationSound } from "@/lib/notification-sounds";
-
 import { replyToMessage, sendMessage } from "./api";
 import { ComposeForm } from "./compose-form";
 import {
@@ -35,7 +35,8 @@ import {
   findDraftForComposer,
   forwardedMessage,
   normalizeDraftHtml,
-  readDraftRecovery,
+  readAccountDraftRecovery,
+  removeAccountDraftRecovery,
   replySendingIdentity,
   sendingIdentities,
   splitRecipients
@@ -56,6 +57,7 @@ export function ComposeDialog({
   onOpenChange,
   onSent
 }: ComposeDialogProps): React.ReactElement | null {
+  const { accountId } = useMobilePreferences();
   const identities = React.useMemo(() => sendingIdentities(mailboxes), [mailboxes]);
   const defaultIdentity = React.useMemo(
     () => defaultSendingIdentity(defaultFromMailboxId, mailboxes, identities),
@@ -89,11 +91,9 @@ export function ComposeDialog({
   const formId = React.useId();
   const replyToMessageId = mode === "reply" ? (message?.id ?? null) : null;
   const forwardOfMessageId = mode === "forward" ? (message?.id ?? null) : null;
-  const recoveryKey = draft?.id
-    ? draftRecoveryKey(draft.id)
-    : draftId
-      ? draftRecoveryKey(draftId)
-      : null;
+  const activeDraftId = draft?.id ?? draftId;
+  const recoveryKey =
+    accountId && activeDraftId ? draftRecoveryKey(activeDraftId, accountId) : null;
   const { initializeAutosave, resetAutosave } = useDraftAutosave({
     open,
     initialized,
@@ -172,7 +172,7 @@ export function ComposeDialog({
             html: initialHtml
           }));
         if (!existing) onDraftsChangeRef.current?.();
-        const recovered = readDraftRecovery(draftRecoveryKey(initial.id), initial.updatedAt);
+        const recovered = readAccountDraftRecovery(accountId, initial);
         setDraft(initial);
         initializeAutosave(initial);
         setSignatureChoice({
@@ -195,6 +195,7 @@ export function ComposeDialog({
       }
     })();
   }, [
+    accountId,
     open,
     message,
     mode,
@@ -242,7 +243,7 @@ export function ComposeDialog({
       initialized.current = false;
       setDraft(null);
       resetAutosave();
-      localStorage.removeItem(draftRecoveryKey(draft.id));
+      removeAccountDraftRecovery(accountId, draft.id);
       onOpenChange(false);
       onDraftsChange?.();
       onSent();
@@ -282,7 +283,7 @@ export function ComposeDialog({
     initialized.current = false;
     setDraft(null);
     resetAutosave();
-    if (draft) localStorage.removeItem(draftRecoveryKey(draft.id));
+    if (draft) removeAccountDraftRecovery(accountId, draft.id);
     onOpenChange(false);
     onDraftsChange?.();
     toast.success("Draft discarded.");

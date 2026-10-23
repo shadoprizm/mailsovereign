@@ -87,7 +87,7 @@ export function UpdateSettings({
       ) : null}
       {applyError ? (
         <Alert variant="destructive">
-          <AlertTitle>Update authorization unavailable</AlertTitle>
+          <AlertTitle>Update could not start</AlertTitle>
           <AlertDescription>{applyError}</AlertDescription>
         </Alert>
       ) : null}
@@ -163,7 +163,8 @@ export function UpdateSettings({
               <Alert variant="destructive">
                 <AlertTitle>Direct update unavailable</AlertTitle>
                 <AlertDescription>
-                  This release cannot update directly from the installed version.
+                  {status.compatibilityIssue?.message ??
+                    "This release cannot update directly from the installed version."}
                 </AlertDescription>
               </Alert>
             ) : null}

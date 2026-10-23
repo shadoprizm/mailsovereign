@@ -1,6 +1,7 @@
 export type MailDomain = {
   id: string;
   name: string;
+  kind: "managed" | "external";
   zoneId: string | null;
   accountId: string | null;
   receivingStatus: "pending" | "ready" | "degraded" | "disabled";

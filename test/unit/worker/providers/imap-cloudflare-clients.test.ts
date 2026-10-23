@@ -26,6 +26,7 @@ function imapRuntime(overrides: Record<string, unknown> = {}) {
       { name: "Sent", delimiter: "/", attributes: ["\\Sent"] }
     ]),
     status: vi.fn().mockResolvedValue({ uidvalidity: 7, uidnext: 10 }),
+    searchEmails: vi.fn().mockResolvedValue([8]),
     fetchRawMessage: vi.fn().mockResolvedValue({
       uid: 8,
       size: 4,
@@ -153,6 +154,27 @@ describe("Cloudflare-native IMAP client adapter", () => {
     });
   });
 
+  it("uses a bounded IMAP SINCE search for a history cutoff", async () => {
+    const runtime = imapRuntime();
+    const client = createCloudflareImapClient(config, credentials, (() => runtime) as never);
+
+    await expect(
+      client.listUids("INBOX", {
+        fromUid: 8,
+        toUid: 9,
+        maxEntries: 2,
+        since: "2026-08-01"
+      })
+    ).resolves.toEqual([{ uid: 8, seen: false }]);
+    expect(runtime.examine).toHaveBeenCalledWith("INBOX");
+    expect(runtime.searchEmails).toHaveBeenCalledWith({
+      since: new Date("2026-08-01T00:00:00.000Z"),
+      uid: "8:9",
+      useUid: true
+    });
+    expect(runtime.fetchEmails).not.toHaveBeenCalled();
+  });
+
   it("refuses oversized raw messages before returning partial content", async () => {
     const runtime = imapRuntime({
       fetchRawMessage: vi.fn().mockResolvedValue({
@@ -173,6 +195,20 @@ describe("Cloudflare-native IMAP client adapter", () => {
     const raw = new Uint8Array([0, 127, 128, 255]);
     const runtime = imapRuntime({
       fetchRawMessage: vi.fn().mockResolvedValue({ uid: 8, size: raw.byteLength, raw })
+    });
+    const client = createCloudflareImapClient(config, credentials, (() => runtime) as never);
+
+    const result = await client.fetchRaw("INBOX", 8, { maxBytes: 10 });
+
+    expect([...new Uint8Array(result)]).toEqual([...raw]);
+  });
+
+  it.each([
+    3, 5
+  ])("accepts a bounded raw literal when the provider advertises a different size (%s)", async (advertisedSize) => {
+    const raw = new Uint8Array([0, 127, 128, 255]);
+    const runtime = imapRuntime({
+      fetchRawMessage: vi.fn().mockResolvedValue({ uid: 8, size: advertisedSize, raw })
     });
     const client = createCloudflareImapClient(config, credentials, (() => runtime) as never);
 
@@ -365,5 +401,71 @@ describe("Cloudflare-native SMTP client adapter", () => {
         expect(submitError.stack).not.toContain("hunter2-secret");
       }
     }
+  });
+});
+
+describe("transactional SMTP features", () => {
+  it("preserves explicit message identity, recipient names, reply address and unsubscribe headers", async () => {
+    const send = vi.fn().mockResolvedValue(undefined);
+    const client = createCloudflareSmtpClient(config, credentials, async () => ({
+      send,
+      close: vi.fn().mockResolvedValue(undefined)
+    }));
+    const html = '<table style="width:100%"><tr><td>Hello</td></tr></table>';
+    const text = "Hello\nPlain text";
+    await expect(
+      client.submit({
+        from: { email: "sender@example.com", name: "Sender" },
+        to: ["recipient@example.net"],
+        recipientNames: { "recipient@example.net": "Recipient" },
+        replyTo: { email: "support@example.com", name: "Support" },
+        subject: "Message",
+        html,
+        text,
+        messageId: "<msg_stable@example.com>",
+        headers: {
+          "List-Unsubscribe": "<https://example.com/unsubscribe>",
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+        }
+      })
+    ).resolves.toEqual({ messageId: "<msg_stable@example.com>" });
+    const options = send.mock.calls[0]?.[0];
+    expect(options).toMatchObject({
+      html,
+      text,
+      to: [{ email: "recipient@example.net", name: "Recipient" }],
+      reply: { email: "support@example.com", name: "Support" }
+    });
+    const raw = new Email(options).getEmailData();
+    expect(raw).toContain("Message-ID: <msg_stable@example.com>");
+    expect(raw).toContain('To: "Recipient" <recipient@example.net>');
+    expect(raw).toContain('Reply-To: "Support" <support@example.com>');
+    expect(raw).toContain("List-Unsubscribe-Post: List-Unsubscribe=One-Click");
+  });
+  it.each([
+    ["connect", "Socket timeout!", true],
+    ["send", "Timeout while waiting for smtp server response", false],
+    ["send", "Failed send email body: 451 Try later", true],
+    ["send", "Invalid RCPT TO: <bad@example.net> 550 Rejected", true],
+    ["send", "Unknown failure with 451 in unrelated context", false]
+  ])("distinguishes definite nonacceptance: %s / %s", async (phase, detail, definite) => {
+    const client = createCloudflareSmtpClient(config, credentials, async () => {
+      if (phase === "connect") throw new Error(detail);
+      return {
+        send: vi.fn().mockRejectedValue(new Error(detail)),
+        close: vi.fn().mockResolvedValue(undefined)
+      };
+    });
+    await expect(
+      client.submit({
+        from: "sender@example.com",
+        to: ["recipient@example.net"],
+        subject: "Test",
+        text: "Test"
+      })
+    ).rejects.toMatchObject({
+      definitelyNotAccepted: definite,
+      message: "The SMTP submission failed."
+    });
   });
 });

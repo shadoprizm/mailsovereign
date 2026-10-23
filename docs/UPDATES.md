@@ -9,9 +9,52 @@ Before deploying an update, Sovereign Mail verifies:
 
 1. The manifest signature against the embedded Sovereign Mail public key.
 2. The product identifier and supported stable channel.
-3. The installed version against the release's minimum version.
-4. The downloaded artifact's exact size and SHA-256 digest.
-5. Database migration and deployed-worker health checks.
+3. The running Worker version against the version recorded in D1.
+4. The installed schema version against the release schema so an update can never deploy code for
+   an older schema.
+5. The installed version against the release's minimum version.
+6. The downloaded artifact's exact size and SHA-256 digest.
+7. Database migration and deployed-worker health checks.
+
+The update status endpoint reads `release_state` from the installation's D1 database. A missing or
+invalid release row, a mismatch between the running Worker and D1, or a release whose schema is
+older than the installed schema fails closed before Cloudflare authorization or build triggering.
+The apply endpoint repeats these checks against the current signed manifest immediately before it
+starts a build.
+
+## In-app update runner
+
+An in-app update queues a manually requested Cloudflare Workers Build. It never deploys the source
+checkout directly. The production trigger must:
+
+- Connect the installed Worker to the canonical `shadoprizm/mailsovereign` GitHub repository.
+- Use `main` as its production branch.
+- Use `pnpm sovereign-mail builds-update` as its exact deploy command.
+- Store the deployment-specific Wrangler configuration in the secret build variable
+  `SOVEREIGN_MAIL_DEPLOYMENT_CONFIG`.
+
+Generate the build variable from the installation manifest without printing credentials or mail:
+
+```sh
+pnpm sovereign-mail updates-config --name production
+```
+
+Copy the single emitted value into the trigger's secret build variable. The generated value
+contains Cloudflare resource identifiers and public deployment configuration, so it must still be
+treated as installation metadata and must never be committed. The build runner decodes it only in
+a restricted temporary directory, downloads the current signed stable artifact, verifies its size
+and digest, and uses the existing recovery-aware deployment path.
+
+Cloudflare requires the GitHub App and a build token before a trigger can be created. Until the
+operator completes that one-time account setup, signed terminal updates remain supported with:
+
+```sh
+pnpm deploy -- --config .sovereign-mail/deployments/production/wrangler.jsonc
+```
+
+Connecting a generic `npx wrangler deploy` trigger is unsupported: it would deploy the moving
+source branch with repository placeholder bindings instead of the signed release artifact and the
+customer's recorded resources.
 
 The signed envelope also records the exact size and SHA-256 digest of each Ubuntu `.deb` and
 AppImage artifact. The desktop packages do not contain an independent copy of customer mail or the

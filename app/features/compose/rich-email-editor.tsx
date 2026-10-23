@@ -47,6 +47,9 @@ export function RichEmailEditor({
         attributes: {
           class:
             "prose prose-sm min-h-60 max-w-none px-5 py-4 text-sm outline-none [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_p]:my-2 [&_[data-email-signature]]:my-3 [&_[data-email-signature]]:max-w-full [&_[data-email-signature]]:overflow-x-auto [&_.ProseMirror-selectednode]:outline [&_.ProseMirror-selectednode]:outline-2 [&_.ProseMirror-selectednode]:outline-offset-2 [&_.ProseMirror-selectednode]:outline-ring",
+          role: "textbox",
+          "aria-label": "Message body",
+          "aria-multiline": "true",
           "data-compose-autofocus": ""
         },
         handleDrop: (_view, event) => {
@@ -81,55 +84,60 @@ export function RichEmailEditor({
   };
   return (
     <div className={cn(contained && "min-h-0 flex-1 overflow-auto")}>
-      <div
-        className="sticky top-0 z-10 flex flex-wrap gap-1 border-b bg-card px-4 py-2"
-        role="toolbar"
-        aria-label="Formatting"
-      >
-        <Tool label="Undo" onClick={() => editor.chain().focus().undo().run()}>
-          <Undo2 />
-        </Tool>
-        <Tool label="Redo" onClick={() => editor.chain().focus().redo().run()}>
-          <Redo2 />
-        </Tool>
-        <Tool
-          label="Bold"
-          active={editor.isActive("bold")}
-          onClick={() => editor.chain().focus().toggleBold().run()}
+      <details className="border-b">
+        <summary className="cursor-pointer px-5 py-3 text-sm text-muted-foreground">
+          Formatting
+        </summary>
+        <div
+          className="sticky top-0 z-10 flex flex-wrap gap-1 border-b bg-card px-4 py-2"
+          role="toolbar"
+          aria-label="Formatting"
         >
-          <Bold />
-        </Tool>
-        <Tool
-          label="Italic"
-          active={editor.isActive("italic")}
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-        >
-          <Italic />
-        </Tool>
-        <Tool
-          label="Bulleted list"
-          active={editor.isActive("bulletList")}
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-        >
-          <List />
-        </Tool>
-        <Tool
-          label="Numbered list"
-          active={editor.isActive("orderedList")}
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        >
-          <ListOrdered />
-        </Tool>
-        <Tool label="Link" active={editor.isActive("link")} onClick={link}>
-          <Link2 />
-        </Tool>
-        <Tool
-          label="Clear formatting"
-          onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
-        >
-          <RemoveFormatting />
-        </Tool>
-      </div>
+          <Tool label="Undo" onClick={() => editor.chain().focus().undo().run()}>
+            <Undo2 />
+          </Tool>
+          <Tool label="Redo" onClick={() => editor.chain().focus().redo().run()}>
+            <Redo2 />
+          </Tool>
+          <Tool
+            label="Bold"
+            active={editor.isActive("bold")}
+            onClick={() => editor.chain().focus().toggleBold().run()}
+          >
+            <Bold />
+          </Tool>
+          <Tool
+            label="Italic"
+            active={editor.isActive("italic")}
+            onClick={() => editor.chain().focus().toggleItalic().run()}
+          >
+            <Italic />
+          </Tool>
+          <Tool
+            label="Bulleted list"
+            active={editor.isActive("bulletList")}
+            onClick={() => editor.chain().focus().toggleBulletList().run()}
+          >
+            <List />
+          </Tool>
+          <Tool
+            label="Numbered list"
+            active={editor.isActive("orderedList")}
+            onClick={() => editor.chain().focus().toggleOrderedList().run()}
+          >
+            <ListOrdered />
+          </Tool>
+          <Tool label="Link" active={editor.isActive("link")} onClick={link}>
+            <Link2 />
+          </Tool>
+          <Tool
+            label="Clear formatting"
+            onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
+          >
+            <RemoveFormatting />
+          </Tool>
+        </div>
+      </details>
       <EditorContent editor={editor} />
     </div>
   );

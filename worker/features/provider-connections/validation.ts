@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { emailAddressSchema } from "../../lib/validation";
-import { imapSmtpConfigSchema } from "../../providers/connections";
+import { imapSmtpConfigSchema, providerImportSinceSchema } from "../../providers/connections";
 
 export const createProviderConnectionSchema = z
   .object({
@@ -14,3 +14,11 @@ export const createProviderConnectionSchema = z
   .strict();
 
 export const resetProviderCursorSchema = z.object({ folderPath: z.literal("INBOX") }).strict();
+
+export const updateProviderCredentialsSchema = z
+  .object({ password: z.string().min(1).max(1024) })
+  .strict();
+
+export const updateProviderImportScopeSchema = z
+  .object({ importSince: providerImportSinceSchema.nullable() })
+  .strict();

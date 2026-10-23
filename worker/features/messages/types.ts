@@ -56,6 +56,11 @@ export type MessageDetail = MessageSummary & {
 
 export type ConversationSummary = MessageSummary & {
   isStarred: boolean;
+  labels: Array<{
+    id: string;
+    name: string;
+    color: "slate" | "blue" | "violet" | "green" | "amber" | "red";
+  }>;
   messageCount: number;
   unreadCount: number;
 };
@@ -141,6 +146,7 @@ export type InsertMessageInput = {
   hasAttachments: boolean;
   deliveredToAddressId?: string | null | undefined;
   sentFromAddressId?: string | null | undefined;
+  sourceProviderConnectionId?: string | null | undefined;
 };
 
 export type InsertAttachmentInput = {

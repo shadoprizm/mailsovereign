@@ -1,6 +1,12 @@
 import { newId, nowIso } from "../../db/client";
 import { assertDomainUnusedByLoginEmails } from "../../security/login-email";
-import type { CatchAllPolicy, DomainStatus, MailDomain, MailDomainRow } from "./types";
+import type {
+  CatchAllPolicy,
+  DomainStatus,
+  MailDomain,
+  MailDomainKind,
+  MailDomainRow
+} from "./types";
 
 const mailDomainSelection = `SELECT domain.*,
   CASE WHEN
@@ -19,6 +25,7 @@ export function mapMailDomain(row: MailDomainRow): MailDomain {
   return {
     id: row.id,
     name: row.name,
+    kind: row.kind,
     zoneId: row.zone_id,
     accountId: row.account_id,
     receivingStatus: row.receiving_status,
@@ -100,13 +107,15 @@ export async function upsertMailDomain(
     name: string;
     zoneId?: string | null | undefined;
     accountId?: string | null | undefined;
+    kind?: MailDomainKind | undefined;
     receivingStatus?: DomainStatus | undefined;
     sendingStatus?: DomainStatus | undefined;
     dnsStatus?: Exclude<DomainStatus, "disabled"> | undefined;
   }
 ): Promise<MailDomain> {
   const existing = await findMailDomainByName(db, input.name);
-  if (!existing) {
+  const requestedKind = input.kind ?? "managed";
+  if (requestedKind === "managed" && (!existing || existing.kind === "external")) {
     await assertDomainUnusedByLoginEmails(db, input.name);
   }
   const timestamp = nowIso();
@@ -114,15 +123,31 @@ export async function upsertMailDomain(
   await db
     .prepare(
       `INSERT INTO mail_domains
-     (id, name, zone_id, account_id, receiving_status, sending_status, dns_status,
+     (id, name, kind, zone_id, account_id, receiving_status, sending_status, dns_status,
       catch_all_policy, is_enabled, verified_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'reject', 1, ?, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'reject', 1, ?, ?, ?)
      ON CONFLICT(name) DO UPDATE SET
+       kind = CASE
+         WHEN mail_domains.kind = 'managed' OR excluded.kind = 'managed' THEN 'managed'
+         ELSE 'external'
+       END,
        zone_id = COALESCE(excluded.zone_id, mail_domains.zone_id),
        account_id = COALESCE(excluded.account_id, mail_domains.account_id),
-       receiving_status = excluded.receiving_status,
-       sending_status = excluded.sending_status,
-       dns_status = excluded.dns_status,
+       receiving_status = CASE
+         WHEN excluded.kind = 'external' AND mail_domains.kind = 'managed'
+           THEN mail_domains.receiving_status
+         ELSE excluded.receiving_status
+       END,
+       sending_status = CASE
+         WHEN excluded.kind = 'external' AND mail_domains.kind = 'managed'
+           THEN mail_domains.sending_status
+         ELSE excluded.sending_status
+       END,
+       dns_status = CASE
+         WHEN excluded.kind = 'external' AND mail_domains.kind = 'managed'
+           THEN mail_domains.dns_status
+         ELSE excluded.dns_status
+       END,
        is_enabled = 1,
        verified_at = excluded.verified_at,
        updated_at = excluded.updated_at`
@@ -130,6 +155,7 @@ export async function upsertMailDomain(
     .bind(
       id,
       input.name.toLowerCase(),
+      requestedKind,
       input.zoneId ?? existing?.zoneId ?? null,
       input.accountId ?? existing?.accountId ?? null,
       input.receivingStatus ?? existing?.receivingStatus ?? "pending",

@@ -9,6 +9,30 @@ const inboxPage = readFileSync(
   new URL("../../../../app/features/inbox/inbox-page.tsx", import.meta.url),
   "utf8"
 );
+const conversationMessages = readFileSync(
+  new URL("../../../../app/features/messages/conversation-messages.tsx", import.meta.url),
+  "utf8"
+);
+const messageDetail = readFileSync(
+  new URL("../../../../app/features/messages/message-detail.tsx", import.meta.url),
+  "utf8"
+);
+const messageListItem = readFileSync(
+  new URL("../../../../app/features/messages/message-list-item.tsx", import.meta.url),
+  "utf8"
+);
+const draftsPage = readFileSync(
+  new URL("../../../../app/features/drafts/drafts-page.tsx", import.meta.url),
+  "utf8"
+);
+const settingsPage = readFileSync(
+  new URL("../../../../app/features/settings/settings-page.tsx", import.meta.url),
+  "utf8"
+);
+const updateBanner = readFileSync(
+  new URL("../../../../app/features/updates/update-banner.tsx", import.meta.url),
+  "utf8"
+);
 const mobileNavigation = readFileSync(
   new URL("../../../../app/components/layout/mobile-navigation.tsx", import.meta.url),
   "utf8"
@@ -91,7 +115,7 @@ describe("mobile application shell", () => {
   });
 
   it("keeps editable field text large enough to avoid iOS focus zoom", () => {
-    expect(styles).toContain("@media (max-width: 767px)");
+    expect(styles).toContain("@media (max-width: 1023px)");
     expect(styles).toContain('[contenteditable="true"][class]');
     expect(styles).toContain("font-size: 16px");
   });
@@ -132,5 +156,15 @@ describe("mobile application shell", () => {
     expect(pullToRefresh).toContain("safe-area-inset-bottom");
     expect(pullToRefresh).toContain("rounded-full");
     expect(pullToRefresh).toContain("md:hidden");
+  });
+
+  it("gives compact mail surfaces distinct spacing and card groups", () => {
+    expect(inboxPage).toContain("gap-0 bg-background");
+    expect(messageListItem).toContain("max-md:bg-card");
+    expect(messageDetail).toContain("grid-cols-[auto_minmax(0,1fr)]");
+    expect(conversationMessages).toContain("grid gap-3 p-3");
+    expect(draftsPage).toContain("gap-3 bg-background p-3");
+    expect(settingsPage).toContain("overflow-x-auto");
+    expect(updateBanner).toContain("mx-3 mt-3");
   });
 });

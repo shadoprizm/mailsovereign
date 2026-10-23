@@ -1,0 +1,12 @@
+**
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!.pnpmfile.cjs
+!patches
+!patches/cf-imap@1.0.0.patch
+!patches/worker-mailer@1.2.1.patch
+!gateway
+!gateway/package.json
+!gateway/src
+!gateway/src/**

@@ -17,12 +17,14 @@ vi.mock("@/features/updates/api", () => ({
 
 const status: UpdateStatus = {
   product: "sovereign-mail",
+  runningVersion: "0.1.22",
   installedVersion: "0.1.22",
   installedSchemaVersion: 5,
   channel: "stable",
   checkedAt: "2026-07-29T00:00:00.000Z",
   available: true,
   compatible: true,
+  compatibilityIssue: null,
   release: {
     version: "0.1.23",
     schemaVersion: 5,

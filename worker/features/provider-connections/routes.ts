@@ -17,10 +17,11 @@ import {
   insertImapSmtpConnection,
   listImapSmtpConnections,
   markImapSmtpConnectionError,
-  markImapSmtpConnectionVerified
+  markImapSmtpConnectionVerified,
+  updateImapSmtpCredentials,
+  updateImapSmtpImportSince
 } from "../../providers/connections";
 import { importCredentialKey, ProviderCredentials } from "../../providers/credentials";
-import { ProviderError } from "../../providers/errors";
 import { createCloudflareImapClient } from "../../providers/imap/cloudflare-imap-client";
 import { createCloudflareSmtpClient } from "../../providers/imap/cloudflare-smtp-client";
 import { resetFolderCursor } from "../../providers/imap/cursors";
@@ -28,20 +29,32 @@ import {
   createImapClientForConnection,
   createSmtpVerifierForConnection
 } from "../../providers/imap/factory";
-import { ImapClientError } from "../../providers/imap/ports";
-import { SmtpSubmitError } from "../../providers/imap/transport";
 import { providerId } from "../../providers/types";
 import { recordAudit } from "../audit/service";
 
+import { connectionAppError, protocolAppError, providerFailureCode } from "./errors";
+import { withProviderSyncProgress } from "./progress";
+import { disconnectAndCreateProviderPurge, listProviderImportPurges } from "./purge";
 import { ensureProviderMailbox } from "./service";
-import { createProviderConnectionSchema, resetProviderCursorSchema } from "./validation";
+import {
+  createProviderConnectionSchema,
+  resetProviderCursorSchema,
+  updateProviderCredentialsSchema,
+  updateProviderImportScopeSchema
+} from "./validation";
 
 export const providerConnectionRoutes = new Hono<HonoApp>();
 
 providerConnectionRoutes.get("/", async (c) => {
   const auth = await requireAuthContext(c.env, c.req.raw);
   requireRole(auth, ["owner", "admin"]);
-  return c.json(await listImapSmtpConnections(c.env.DB));
+  return c.json(await withProviderSyncProgress(c.env.DB, await listImapSmtpConnections(c.env.DB)));
+});
+
+providerConnectionRoutes.get("/purges", async (c) => {
+  const auth = await requireAuthContext(c.env, c.req.raw);
+  requireRole(auth, ["owner", "admin"]);
+  return c.json(await listProviderImportPurges(c.env.DB));
 });
 
 providerConnectionRoutes.post("/", async (c) => {
@@ -72,7 +85,8 @@ providerConnectionRoutes.post("/", async (c) => {
     outcome: "success",
     metadata: { kind: connection.kind }
   });
-  return c.json(connection, 201);
+  const [created] = await withProviderSyncProgress(c.env.DB, [connection]);
+  return c.json(created, 201);
 });
 
 providerConnectionRoutes.delete("/:providerId", async (c) => {
@@ -83,6 +97,33 @@ providerConnectionRoutes.delete("/:providerId", async (c) => {
   const connection = await getImapSmtpConnection(c.env.DB, owner).catch((error) => {
     throw connectionAppError(error);
   });
+  const eraseImported = c.req.query("eraseImported") === "true";
+  if (eraseImported) {
+    if (!c.env.SOVEREIGN_MAIL_JOBS) {
+      throw new AppError("QUEUE_UNAVAILABLE", "The job queue is unavailable.", 503);
+    }
+    const purge = await disconnectAndCreateProviderPurge(c.env.DB, connection);
+    await c.env.SOVEREIGN_MAIL_JOBS.send(
+      {
+        id: `provider-purge:${purge.id}:${crypto.randomUUID()}`,
+        kind: "provider-purge",
+        purgeId: purge.id,
+        requestedAt: nowIso()
+      },
+      { delaySeconds: 60 }
+    ).catch(() => undefined);
+    await recordAudit(c.env.DB, {
+      correlationId: c.get("correlationId"),
+      actorType: "user",
+      actorId: auth.user.id,
+      action: "provider_connection.purge.request",
+      resourceType: "provider_import_purge",
+      resourceId: purge.id,
+      outcome: "success",
+      metadata: { totalMessages: purge.totalMessages }
+    });
+    return c.json(purge, 202);
+  }
   await deleteImapSmtpConnection(c.env.DB, owner).catch((error) => {
     throw connectionAppError(error);
   });
@@ -97,6 +138,57 @@ providerConnectionRoutes.delete("/:providerId", async (c) => {
     metadata: { mailboxAddress: connection.mailboxAddress }
   });
   return c.body(null, 204);
+});
+
+providerConnectionRoutes.put("/:providerId/import-scope", async (c) => {
+  const auth = await requireAuthContext(c.env, c.req.raw);
+  requireRole(auth, ["owner", "admin"]);
+  requireRecentSessionForEnvironment(auth, c.env);
+  const owner = parseProviderId(c.req.param("providerId"));
+  const input = parseWith(updateProviderImportScopeSchema, await readJson(c.req.raw));
+  const connection = await updateImapSmtpImportSince(c.env.DB, owner, input.importSince).catch(
+    (error) => {
+      throw connectionAppError(error);
+    }
+  );
+  await recordAudit(c.env.DB, {
+    correlationId: c.get("correlationId"),
+    actorType: "user",
+    actorId: auth.user.id,
+    action: "provider_connection.import_scope.update",
+    resourceType: "provider_connection",
+    resourceId: connection.id,
+    outcome: "success",
+    metadata: { importSince: input.importSince }
+  });
+  const [updated] = await withProviderSyncProgress(c.env.DB, [connection]);
+  return c.json(updated);
+});
+
+providerConnectionRoutes.put("/:providerId/credentials", async (c) => {
+  const auth = await requireAuthContext(c.env, c.req.raw);
+  requireRole(auth, ["owner", "admin"]);
+  requireRecentSessionForEnvironment(auth, c.env);
+  const owner = parseProviderId(c.req.param("providerId"));
+  const input = parseWith(updateProviderCredentialsSchema, await readJson(c.req.raw));
+  let connection: ImapSmtpConnectionRecord;
+  try {
+    const key = await importCredentialKey(c.env.PROVIDER_CREDENTIAL_KEY);
+    connection = await updateImapSmtpCredentials(c.env.DB, key, owner, input.password);
+  } catch (error) {
+    throw connectionAppError(error);
+  }
+  await recordAudit(c.env.DB, {
+    correlationId: c.get("correlationId"),
+    actorType: "user",
+    actorId: auth.user.id,
+    action: "provider_connection.credentials.update",
+    resourceType: "provider_connection",
+    resourceId: connection.id,
+    outcome: "success"
+  });
+  const [updated] = await withProviderSyncProgress(c.env.DB, [connection]);
+  return c.json(updated);
 });
 
 providerConnectionRoutes.post("/:providerId/sync", async (c) => {
@@ -248,70 +340,4 @@ function parseProviderId(value: string) {
   } catch {
     throw new AppError("VALIDATION_ERROR", "Provider id is invalid.", 400);
   }
-}
-
-function connectionAppError(error: unknown): AppError {
-  if (!(error instanceof ProviderError)) {
-    return new AppError(
-      "PROVIDER_CONNECTION_FAILED",
-      "The provider connection could not be saved.",
-      500
-    );
-  }
-  if (error.code === "PROVIDER_ALREADY_REGISTERED") {
-    return new AppError(error.code, error.message, 409);
-  }
-  if (error.code === "PROVIDER_NOT_REGISTERED") {
-    return new AppError(error.code, error.message, 404);
-  }
-  if (error.code === "PROVIDER_CREDENTIAL_UNAVAILABLE") {
-    return new AppError(error.code, "Provider credential storage is not configured.", 503);
-  }
-  return new AppError(error.code, error.message, 400);
-}
-
-function protocolAppError(error: unknown): AppError {
-  if (error instanceof ImapClientError) {
-    if (error.reason === "auth") {
-      return new AppError(
-        "PROVIDER_AUTH_FAILED",
-        "The mail provider rejected the connection credentials.",
-        422
-      );
-    }
-    if (error.reason === "unavailable" || error.reason === "timeout") {
-      return new AppError(
-        "PROVIDER_UNAVAILABLE",
-        "The mail provider is temporarily unavailable.",
-        503
-      );
-    }
-    return new AppError(
-      "PROVIDER_MALFORMED_RESPONSE",
-      "The mail provider returned a malformed response.",
-      502
-    );
-  }
-  if (error instanceof SmtpSubmitError) {
-    if (error.reason === "auth") {
-      return new AppError(
-        "PROVIDER_AUTH_FAILED",
-        "The mail provider rejected the connection credentials.",
-        422
-      );
-    }
-    return new AppError(
-      "PROVIDER_UNAVAILABLE",
-      "The mail provider is temporarily unavailable.",
-      503
-    );
-  }
-  return connectionAppError(error);
-}
-
-function providerFailureCode(error: unknown): string {
-  if (error instanceof ProviderError || error instanceof AppError) return error.code;
-  if (error instanceof ImapClientError) return `IMAP_${error.reason.toUpperCase()}`;
-  if (error instanceof SmtpSubmitError) return `SMTP_${error.reason.toUpperCase()}`;
-  return "PROVIDER_VERIFICATION_FAILED";
 }

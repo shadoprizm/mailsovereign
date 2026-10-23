@@ -1,5 +1,6 @@
 import { apiDelete, apiGet, apiPost } from "@/lib/api-client";
 import type { MailFolderId } from "@/lib/routes";
+import type { ConversationFilterApiParams } from "./conversation-filters";
 import type {
   ConversationAction,
   ConversationPage,
@@ -11,6 +12,7 @@ import type {
 export type MessageListParams = {
   cursor?: string | undefined;
   folder?: string | undefined;
+  labelId?: string | undefined;
   mailboxId?: string | undefined;
   search?: string | undefined;
 };
@@ -19,18 +21,31 @@ export async function listMessages(params: MessageListParams): Promise<MessageSu
   const query = new URLSearchParams();
   if (params.folder) query.set("folder", params.folder);
   if (params.mailboxId) query.set("mailboxId", params.mailboxId);
+  if (params.labelId) query.set("labelId", params.labelId);
   if (params.search) query.set("search", params.search);
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return apiGet<MessageSummary[]>(`/api/messages${suffix}`);
 }
 
 export async function listConversations(
-  params: MessageListParams & { folder: MailFolderId }
+  params: MessageListParams & ConversationFilterApiParams & { folder: MailFolderId }
 ): Promise<ConversationPage> {
   const query = new URLSearchParams({ folder: params.folder });
   if (params.cursor) query.set("cursor", params.cursor);
   if (params.mailboxId) query.set("mailboxId", params.mailboxId);
+  if (params.labelId) query.set("labelId", params.labelId);
   if (params.search) query.set("search", params.search);
+  if (params.after) query.set("after", params.after);
+  if (params.attachments) query.set("attachments", params.attachments);
+  if (params.before) query.set("before", params.before);
+  if (params.contains) query.set("contains", params.contains);
+  if (params.direction) query.set("direction", params.direction);
+  if (params.exclude) query.set("exclude", params.exclude);
+  if (params.from) query.set("from", params.from);
+  if (params.read) query.set("read", params.read);
+  if (params.starred) query.set("starred", params.starred);
+  if (params.subject) query.set("subject", params.subject);
+  if (params.to) query.set("to", params.to);
   return apiGet<ConversationPage>(`/api/conversations?${query.toString()}`);
 }
 
@@ -70,4 +85,14 @@ export async function deleteConversation(
   id: string
 ): Promise<{ affected: number; threadId: string }> {
   return apiDelete(`/api/conversations/${id}`);
+}
+
+export type ConversationSelectionScope = Omit<MessageListParams, "cursor" | "folder"> &
+  ConversationFilterApiParams & { folder: MailFolderId };
+
+export async function setMatchingConversationsReadState(
+  filters: ConversationSelectionScope,
+  action: "read" | "unread"
+): Promise<{ affected: number; conversationCount: number }> {
+  return apiPost("/api/conversations/bulk-read-state", { action, filters });
 }

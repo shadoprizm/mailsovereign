@@ -5,9 +5,10 @@ import type { Mailbox } from "@/features/mailboxes/types";
 import type { MessageDetail } from "@/features/messages/types";
 import { formatDateTime } from "@/lib/format";
 import type { SendingIdentity } from "./compose-fields";
+import { removeDraftRecovery, writeDraftRecovery } from "./draft-recovery";
 
 export type ComposeMode = "new" | "reply" | "forward";
-export type DraftSaveState = "saved" | "saving" | "editing-recipient" | "error";
+export type DraftSaveState = "saved" | "saving" | "editing-recipient" | "error" | "local";
 
 export type ComposeDialogProps = {
   defaultFromMailboxId?: string | null;
@@ -27,8 +28,10 @@ export function findDraftForComposer(drafts: Draft[], draftId: string | null): D
   return draftId ? (drafts.find((draft) => draft.id === draftId) ?? null) : null;
 }
 
-export const draftRecoveryKey = (draftId: string): string =>
-  `sovereign-mail:compose:draft:${draftId}`;
+export const draftRecoveryKey = (draftId: string, accountId?: string): string =>
+  accountId
+    ? `sovereign-mail:compose:account:${encodeURIComponent(accountId)}:draft:${encodeURIComponent(draftId)}`
+    : `sovereign-mail:compose:draft:${draftId}`;
 
 export const splitRecipients = (value: string) =>
   value
@@ -150,18 +153,40 @@ export function readDraftRecovery(key: string, serverUpdatedAt: string): Recover
   }
 }
 
+/** Call only with a draft returned by the authenticated drafts API. */
+export function readAccountDraftRecovery(
+  accountId: string | null,
+  draft: Pick<Draft, "id" | "updatedAt">
+): Recovery | null {
+  if (!accountId) return null;
+  const accountKey = draftRecoveryKey(draft.id, accountId);
+  const legacyKey = draftRecoveryKey(draft.id);
+  const current = readDraftRecovery(accountKey, draft.updatedAt);
+  const legacy = readDraftRecovery(legacyKey, draft.updatedAt);
+  if (!legacy || (current && current.savedAt >= legacy.savedAt)) return current;
+  if (writeDraftRecovery(accountKey, legacy)) removeDraftRecovery(legacyKey);
+  return legacy;
+}
+
+export function removeAccountDraftRecovery(accountId: string | null, draftId: string): void {
+  removeDraftRecovery(draftRecoveryKey(draftId));
+  if (accountId) removeDraftRecovery(draftRecoveryKey(draftId, accountId));
+}
+
 export function composeTitle(mode: ComposeMode): string {
   return mode === "reply" ? "Reply" : mode === "forward" ? "Forward" : "New message";
 }
 
 export function draftStatus(state: DraftSaveState): string {
-  return state === "saving"
-    ? "Saving draft…"
-    : state === "editing-recipient"
-      ? "Typing recipient…"
-      : state === "error"
-        ? "Draft not saved"
-        : "Draft saved";
+  return state === "local"
+    ? "Saved on this device · waiting to sync"
+    : state === "saving"
+      ? "Saving draft…"
+      : state === "editing-recipient"
+        ? "Typing recipient…"
+        : state === "error"
+          ? "Draft not saved"
+          : "Draft saved to server";
 }
 
 export function forwardedMessage(message: MessageDetail): { html: string; text: string } {

@@ -1,6 +1,11 @@
 import { DatabaseSync } from "node:sqlite";
-import { claimJobRun } from "@worker/jobs/consumer";
+import {
+  claimJobRun,
+  claimProviderSyncLease,
+  releaseProviderSyncLease
+} from "@worker/jobs/consumer";
 import type { Job } from "@worker/jobs/types";
+import { providerId } from "@worker/providers/types";
 import { describe, expect, it } from "vitest";
 
 function d1From(db: DatabaseSync): D1Database {
@@ -28,6 +33,11 @@ function database() {
     error_code TEXT,
     started_at TEXT NOT NULL,
     finished_at TEXT
+  );
+  CREATE TABLE deployment_state (
+    key TEXT PRIMARY KEY NOT NULL,
+    value_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL
   )`);
   return db;
 }
@@ -65,5 +75,54 @@ describe("job run claims", () => {
 
     sqlite.prepare("UPDATE operation_runs SET status = 'succeeded' WHERE id = ?").run(job.id);
     await expect(claimJobRun(db, job, "2026-08-16T12:00:07.000Z")).resolves.toBe(false);
+  });
+
+  it("reclaims a running claim after the previous Worker invocation was abandoned", async () => {
+    const sqlite = database();
+    const db = d1From(sqlite);
+    await expect(claimJobRun(db, job, "2026-08-16T12:00:01.000Z")).resolves.toBe(true);
+
+    await expect(claimJobRun(db, job, "2026-08-16T12:00:59.000Z")).resolves.toBe(false);
+    await expect(claimJobRun(db, job, "2026-08-16T12:01:02.000Z")).resolves.toBe(true);
+    expect(
+      sqlite
+        .prepare(
+          "SELECT status, started_at, error_code, finished_at FROM operation_runs WHERE id = ?"
+        )
+        .get(job.id)
+    ).toEqual({
+      status: "running",
+      started_at: "2026-08-16T12:01:02.000Z",
+      error_code: null,
+      finished_at: null
+    });
+  });
+
+  it("serializes provider syncs and only lets the current owner release the lease", async () => {
+    const sqlite = database();
+    const db = d1From(sqlite);
+    const owner = providerId("mxroute-primary");
+
+    await expect(
+      claimProviderSyncLease(db, owner, "first", "2026-08-16T12:00:00.000Z")
+    ).resolves.toBe(true);
+    await expect(
+      claimProviderSyncLease(db, owner, "second", "2026-08-16T12:19:59.000Z")
+    ).resolves.toBe(false);
+    await expect(
+      claimProviderSyncLease(db, owner, "second", "2026-08-16T12:20:01.000Z")
+    ).resolves.toBe(true);
+
+    await releaseProviderSyncLease(db, owner, "first");
+    expect(
+      sqlite
+        .prepare("SELECT value_json FROM deployment_state WHERE key = ?")
+        .get("provider-sync-lease:mxroute-primary")
+    ).toEqual({ value_json: JSON.stringify({ token: "second" }) });
+
+    await releaseProviderSyncLease(db, owner, "second");
+    await expect(
+      claimProviderSyncLease(db, owner, "third", "2026-08-16T12:20:02.000Z")
+    ).resolves.toBe(true);
   });
 });

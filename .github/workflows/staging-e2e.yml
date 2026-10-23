@@ -35,6 +35,8 @@ jobs:
       SOVEREIGN_MAIL_STAGING_SENDER: hello@${{ secrets.SOVEREIGN_MAIL_E2E_EMAIL_DOMAIN }}
       SOVEREIGN_MAIL_STAGING_URL: https://${{ secrets.SOVEREIGN_MAIL_E2E_APP_HOSTNAME }}
       DEPLOYMENT_NAME: e2e-${{ github.run_id }}
+      SOVEREIGN_MAIL_STAGING_IMAGES_CONFIG: .sovereign-mail/deployments/e2e-${{ github.run_id }}/wrangler.jsonc
+      SOVEREIGN_MAIL_STAGING_DESKTOP: "1"
     steps:
       - name: Validate staging environment
         run: |
@@ -80,6 +82,8 @@ jobs:
           restore-keys: ${{ runner.os }}-${{ runner.arch }}-playwright-
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
+      - name: Install Electron for desktop image verification
+        run: node node_modules/electron/install.js
       - name: Create disposable customer resources
         run: >-
           pnpm sovereign-mail install

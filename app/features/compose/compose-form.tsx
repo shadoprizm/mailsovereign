@@ -88,15 +88,20 @@ export function ComposeForm(props: ComposeFormProps): React.ReactElement {
               setSubject={props.onSetSubject}
               setSignatureChoice={props.onSetSignatureChoice}
             />
-            <ComposeAi
-              currentText={props.aiCurrentText}
-              from={props.from}
-              messageId={props.messageId}
-              mode={props.mode}
-              subject={props.subject}
-              to={splitAiRecipients(props.to)}
-              onUseProposal={props.onUseAiProposal}
-            />
+            <details className="border-b px-5">
+              <summary className="cursor-pointer py-3 text-sm text-muted-foreground">
+                Writing assistant
+              </summary>
+              <ComposeAi
+                currentText={props.aiCurrentText}
+                from={props.from}
+                messageId={props.messageId}
+                mode={props.mode}
+                subject={props.subject}
+                to={splitAiRecipients(props.to)}
+                onUseProposal={props.onUseAiProposal}
+              />
+            </details>
             <RichEmailEditor
               contained={false}
               html={props.html}

@@ -47,6 +47,7 @@ type SidebarProps = {
   onFolderChange: (folder: FolderId) => void;
   onSignedOut: () => void;
   resizable?: boolean;
+  showThemeSwitcher?: boolean;
   variant?: "desktop" | "drawer";
 };
 
@@ -73,13 +74,14 @@ export function Sidebar({
   onFolderChange,
   onSignedOut,
   resizable = false,
+  showThemeSwitcher = true,
   variant = "desktop"
 }: SidebarProps): React.ReactElement {
   const isDrawer = variant === "drawer";
   const navigationFolders: Array<(typeof mailFolders)[number] | typeof draftFolder> = [];
   for (const folder of mailFolders) {
     navigationFolders.push(folder);
-    if (folder.id === "sent" && (draftCount > 0 || activeFolder === "drafts")) {
+    if (folder.id === "sent" && (isDrawer || draftCount > 0 || activeFolder === "drafts")) {
       navigationFolders.push(draftFolder);
     }
   }
@@ -231,7 +233,7 @@ export function Sidebar({
                 Settings
               </a>
             </Button>
-            <ThemeSwitcher drawer={isDrawer} />
+            {showThemeSwitcher ? <ThemeSwitcher drawer={isDrawer} /> : null}
           </div>
           <div className="mt-2 border-t pt-2">
             <AccountMenu drawer={isDrawer} user={user} onSignedOut={onSignedOut} />

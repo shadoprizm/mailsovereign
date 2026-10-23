@@ -16,6 +16,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { createProviderConnection, verifyProviderConnection } from "./api";
+import { GmailConnectionHelp } from "./gmail-connection-help";
 import { MailServiceField } from "./mail-service-field";
 import {
   applyMailServicePreset,
@@ -23,7 +24,8 @@ import {
   detectMailService,
   getMailServicePreset,
   type MailServerFields,
-  type MailServiceId
+  type MailServiceId,
+  normalizeMailboxPassword
 } from "./mail-service-presets";
 import type { CreateProviderConnectionInput, ProviderConnection } from "./types";
 
@@ -33,7 +35,14 @@ type ConnectionForm = MailServerFields & {
   providerId: string;
   username: string;
   password: string;
+  importSince: string;
 };
+
+function defaultImportSince(): string {
+  const cutoff = new Date();
+  cutoff.setUTCDate(cutoff.getUTCDate() - 90);
+  return cutoff.toISOString().slice(0, 10);
+}
 
 const emptyForm: ConnectionForm = {
   serviceId: "custom",
@@ -41,6 +50,7 @@ const emptyForm: ConnectionForm = {
   providerId: "",
   username: "",
   password: "",
+  importSince: defaultImportSince(),
   imapHost: "",
   imapPort: "993",
   smtpHost: "",
@@ -131,13 +141,14 @@ export function ProviderConnectionDialog({
         form.displayName.trim() ||
         `${selectedPreset?.label ?? "Mailbox"} · ${form.username.trim().toLowerCase()}`,
       username: form.username.trim(),
-      password: form.password,
+      password: normalizeMailboxPassword(form.serviceId, form.password),
       config: {
         imapHost: form.imapHost.trim(),
         imapPort: Number(form.imapPort),
         smtpHost: form.smtpHost.trim(),
         smtpPort: Number(form.smtpPort),
-        tls: "required"
+        tls: "required",
+        importSince: form.importSince || null
       }
     };
 
@@ -201,6 +212,10 @@ export function ProviderConnectionDialog({
         <form className="flex flex-col gap-6" onSubmit={submit}>
           <MailServiceField serviceId={form.serviceId} onServiceChange={selectService} />
 
+          {form.serviceId === "google" ? (
+            <GmailConnectionHelp email={form.username.trim()} />
+          ) : null}
+
           <FieldGroup className="grid gap-5 sm:grid-cols-2">
             <Field>
               <FieldLabel htmlFor="provider-display-name">Connection name (optional)</FieldLabel>
@@ -242,7 +257,9 @@ export function ProviderConnectionDialog({
               />
             </Field>
             <Field className="sm:col-span-2">
-              <FieldLabel htmlFor="provider-password">Mailbox password</FieldLabel>
+              <FieldLabel htmlFor="provider-password">
+                {form.serviceId === "google" ? "Google app password" : "Mailbox password"}
+              </FieldLabel>
               <Input
                 autoComplete="current-password"
                 id="provider-password"
@@ -257,6 +274,21 @@ export function ProviderConnectionDialog({
               </FieldDescription>
             </Field>
           </FieldGroup>
+
+          <Field>
+            <FieldLabel htmlFor="provider-import-since">Oldest Inbox date to import</FieldLabel>
+            <Input
+              id="provider-import-since"
+              max={new Date().toISOString().slice(0, 10)}
+              type="date"
+              value={form.importSince}
+              onChange={(event) => update("importSince", event.target.value)}
+            />
+            <FieldDescription>
+              Defaults to the last 90 days. Clear the date to import all Inbox history. Sent,
+              Archive, Trash, and other Gmail folders are not imported.
+            </FieldDescription>
+          </Field>
 
           <div className="grid gap-5 rounded-lg border bg-muted/20 p-4 sm:grid-cols-[1fr_8rem]">
             <Field>

@@ -172,3 +172,7 @@ export function connectionIdSuggestion(serviceId: MailServiceId, email: string):
     .slice(0, 32);
   return `${servicePart}-${normalizedLocalPart || "primary"}`.slice(0, 64);
 }
+
+export function normalizeMailboxPassword(serviceId: MailServiceId, password: string): string {
+  return serviceId === "google" ? password.replaceAll(/\s/g, "") : password;
+}

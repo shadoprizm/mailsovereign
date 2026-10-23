@@ -1,6 +1,6 @@
 import type { StoredFolderCursor } from "@worker/providers/imap/cursors";
 import { executeImapInboxSync, imapProviderMessageKey } from "@worker/providers/imap/executor";
-import type { ImapClient } from "@worker/providers/imap/ports";
+import { type ImapClient, ImapClientError } from "@worker/providers/imap/ports";
 import { providerId } from "@worker/providers/types";
 import { describe, expect, it, vi } from "vitest";
 
@@ -84,7 +84,15 @@ describe("IMAP inbox executor", () => {
       backfillBeforeUid: 76,
       syncedAt: "2026-08-16T12:00:00.000Z"
     });
-    expect(result).toEqual({ folders: 1, fetched: 2, inserted: 2, duplicates: 0, hasMore: true });
+    expect(result).toEqual({
+      folders: 1,
+      fetched: 2,
+      inserted: 2,
+      duplicates: 0,
+      quarantined: 0,
+      hasMore: true,
+      forwardHasMore: false
+    });
     expect(imap.close).toHaveBeenCalledOnce();
   });
 
@@ -124,12 +132,18 @@ describe("IMAP inbox executor", () => {
       backfillBeforeUid: 51,
       syncedAt: "2026-08-16T12:00:00.000Z"
     });
-    expect(result).toMatchObject({ fetched: 1, inserted: 0, duplicates: 1, hasMore: true });
+    expect(result).toMatchObject({
+      fetched: 1,
+      inserted: 0,
+      duplicates: 1,
+      hasMore: true,
+      forwardHasMore: false
+    });
   });
 
   it("prioritizes new mail and preserves an unfinished backfill boundary", async () => {
     const imap = client({
-      folderStatus: vi.fn().mockResolvedValue({ path: "INBOX", uidValidity: 7, uidNext: 111 }),
+      folderStatus: vi.fn().mockResolvedValue({ path: "INBOX", uidValidity: 7, uidNext: 151 }),
       listUids: vi.fn().mockResolvedValue([
         {
           uid: 101,
@@ -146,7 +160,7 @@ describe("IMAP inbox executor", () => {
       syncedAt: "2026-08-16T11:00:00.000Z"
     });
 
-    await executeImapInboxSync({
+    const result = await executeImapInboxSync({
       providerId: owner,
       envelopeRecipient: "ops@example.com",
       client: imap,
@@ -158,15 +172,16 @@ describe("IMAP inbox executor", () => {
 
     expect(imap.listUids).toHaveBeenCalledWith("INBOX", {
       fromUid: 101,
-      toUid: 110,
+      toUid: 125,
       maxEntries: 25
     });
     expect(cursors.save).toHaveBeenCalledWith("INBOX", {
       uidValidity: 7,
-      lastSeenUid: 110,
+      lastSeenUid: 125,
       backfillBeforeUid: 51,
       syncedAt: "2026-08-16T12:00:00.000Z"
     });
+    expect(result.forwardHasMore).toBe(true);
   });
 
   it("does not advance the cursor when storage fails and always closes the client", async () => {
@@ -187,6 +202,60 @@ describe("IMAP inbox executor", () => {
 
     expect(cursors.save).not.toHaveBeenCalled();
     expect(imap.close).toHaveBeenCalledOnce();
+  });
+
+  it("passes the history cutoff to every bounded UID listing", async () => {
+    const imap = client();
+    await executeImapInboxSync({
+      providerId: owner,
+      envelopeRecipient: "ops@example.com",
+      client: imap,
+      cursors: cursorStore(null),
+      store: vi.fn().mockResolvedValue({ inserted: true }),
+      importSince: "2026-08-01",
+      now: () => "2026-08-16T12:00:00.000Z",
+      limits: { maxFolders: 16, batchSize: 25, initialWindow: 100, maxMessageBytes: 1024 }
+    });
+
+    expect(imap.listUids).toHaveBeenCalledWith("INBOX", {
+      fromUid: 76,
+      toUid: 100,
+      maxEntries: 25,
+      since: "2026-08-01"
+    });
+  });
+
+  it("quarantines an oversized message and advances the durable cursor", async () => {
+    const imap = client({
+      fetchRaw: vi
+        .fn()
+        .mockRejectedValueOnce(new ImapClientError("message_too_large"))
+        .mockResolvedValueOnce(new Uint8Array([100]).buffer)
+    });
+    const cursors = cursorStore(null);
+    const quarantine = vi.fn().mockResolvedValue(undefined);
+    const store = vi.fn().mockResolvedValue({ inserted: true });
+
+    const result = await executeImapInboxSync({
+      providerId: owner,
+      envelopeRecipient: "ops@example.com",
+      client: imap,
+      cursors,
+      store,
+      quarantine,
+      now: () => "2026-08-16T12:00:00.000Z",
+      limits: { maxFolders: 16, batchSize: 25, initialWindow: 100, maxMessageBytes: 1024 }
+    });
+
+    expect(quarantine).toHaveBeenCalledWith({
+      folderPath: "INBOX",
+      uidValidity: 7,
+      uid: 76,
+      reason: "message_too_large"
+    });
+    expect(store).toHaveBeenCalledOnce();
+    expect(cursors.save).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({ fetched: 2, inserted: 1, quarantined: 1, hasMore: true });
   });
 
   it("ignores non-inbox folders and fails closed if no inbox exists", async () => {

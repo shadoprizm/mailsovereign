@@ -6,18 +6,33 @@ import { playNotificationSound } from "@/lib/notification-sounds";
 import type { FolderId } from "@/lib/routes";
 
 import { listConversations } from "./api";
+import {
+  type ConversationFilters,
+  conversationFilterApiParams,
+  conversationFilterKey,
+  emptyConversationFilters
+} from "./conversation-filters";
 import type { ConversationAction, ConversationSummary } from "./types";
 
 const refreshIntervalMs = 10_000;
 
 type MailSyncOptions = {
   activeFolder: FolderId;
+  filters?: ConversationFilters;
   mailboxId: string;
+  labelId?: string | null;
   search: string;
   userId: string | null;
 };
 
-export function useMailSync({ activeFolder, mailboxId, search, userId }: MailSyncOptions): {
+export function useMailSync({
+  activeFolder,
+  filters = emptyConversationFilters,
+  mailboxId,
+  labelId,
+  search,
+  userId
+}: MailSyncOptions): {
   applyConversationAction: (threadId: string, action: ConversationAction, affected: number) => void;
   conversations: ConversationSummary[];
   hasMore: boolean;
@@ -25,7 +40,7 @@ export function useMailSync({ activeFolder, mailboxId, search, userId }: MailSyn
   loadMore: () => Promise<void>;
   loadMoreError: string | null;
   notifications: ReturnType<typeof useNotifications>;
-  refresh: () => Promise<void>;
+  refresh: (resetPages?: boolean) => Promise<void>;
   totalCount: number | null;
 } {
   const [conversations, setConversations] = React.useState<ConversationSummary[]>([]);
@@ -38,7 +53,8 @@ export function useMailSync({ activeFolder, mailboxId, search, userId }: MailSyn
   const latestInboundId = React.useRef<string | null>(null);
   const hasInboundSnapshot = React.useRef(false);
   const currentUserId = React.useRef(userId);
-  const syncKey = [userId, activeFolder, mailboxId, search].join("\u0000");
+  const filterKey = conversationFilterKey(filters);
+  const syncKey = [userId, activeFolder, mailboxId, labelId, search, filterKey].join("\u0000");
   const currentSyncKey = React.useRef(syncKey);
   const paginationSyncKey = React.useRef<string | null>(null);
   const inboundSnapshotUserId = React.useRef(userId);
@@ -52,62 +68,77 @@ export function useMailSync({ activeFolder, mailboxId, search, userId }: MailSyn
   currentUserId.current = userId;
   currentSyncKey.current = syncKey;
 
-  const refresh = React.useCallback((): Promise<void> => {
-    if (inFlight.current?.key === syncKey) return inFlight.current.promise;
-
-    const promise = (async () => {
-      if (!userId) {
-        setConversations([]);
-        setNextCursor(null);
-        setTotalCount(null);
-        await refreshNotifications();
-        return;
+  const refresh = React.useCallback(
+    (resetPages = false): Promise<void> => {
+      if (resetPages) {
+        return Promise.allSettled([
+          inFlight.current?.promise,
+          loadMoreInFlight.current?.promise
+        ]).then(() => {
+          if (currentSyncKey.current !== syncKey) return;
+          loadedAdditionalPages.current = false;
+          return refresh();
+        });
       }
+      if (inFlight.current?.key === syncKey) return inFlight.current.promise;
 
-      const [notificationResult, conversationResult] = await Promise.allSettled([
-        refreshNotifications(),
-        activeFolder === "settings" || activeFolder === "drafts" || activeFolder === "contacts"
-          ? Promise.resolve<null>(null)
-          : listConversations({
-              folder: activeFolder,
-              mailboxId: mailboxId === "all" ? undefined : mailboxId,
-              search: search || undefined
-            })
-      ]);
-      if (currentSyncKey.current !== syncKey || currentUserId.current !== userId) return;
-
-      if (conversationResult.status === "fulfilled" && conversationResult.value !== null) {
-        const page = conversationResult.value;
-        if (page.totalCount !== null) setTotalCount(page.totalCount);
-        if (loadedAdditionalPages.current) {
-          setConversations((current) => reconcileNewestPage(page.conversations, current));
-        } else {
-          setConversations(page.conversations);
-          setNextCursor(page.nextCursor);
+      const promise = (async () => {
+        if (!userId) {
+          setConversations([]);
+          setNextCursor(null);
+          setTotalCount(null);
+          await refreshNotifications();
+          return;
         }
-      }
-      if (notificationResult.status === "fulfilled") {
-        const nextInboundId = notificationResult.value.latestInboundMessageId;
-        if (
-          hasInboundSnapshot.current &&
-          nextInboundId !== null &&
-          nextInboundId !== latestInboundId.current
-        ) {
-          playNotificationSound("incoming-email");
-        }
-        latestInboundId.current = nextInboundId;
-        hasInboundSnapshot.current = true;
-      }
 
-      if (conversationResult.status === "rejected") throw conversationResult.reason;
-    })();
-    inFlight.current = { key: syncKey, promise };
-    const clearInFlight = (): void => {
-      if (inFlight.current?.promise === promise) inFlight.current = null;
-    };
-    void promise.then(clearInFlight, clearInFlight);
-    return promise;
-  }, [activeFolder, mailboxId, refreshNotifications, search, syncKey, userId]);
+        const [notificationResult, conversationResult] = await Promise.allSettled([
+          refreshNotifications(),
+          activeFolder === "settings" || activeFolder === "drafts" || activeFolder === "contacts"
+            ? Promise.resolve<null>(null)
+            : listConversations({
+                ...conversationFilterApiParams(filters),
+                folder: activeFolder,
+                labelId: labelId ?? undefined,
+                mailboxId: mailboxId === "all" ? undefined : mailboxId,
+                search: search || undefined
+              })
+        ]);
+        if (currentSyncKey.current !== syncKey || currentUserId.current !== userId) return;
+
+        if (conversationResult.status === "fulfilled" && conversationResult.value !== null) {
+          const page = conversationResult.value;
+          if (page.totalCount !== null) setTotalCount(page.totalCount);
+          if (loadedAdditionalPages.current) {
+            setConversations((current) => reconcileNewestPage(page.conversations, current));
+          } else {
+            setConversations(page.conversations);
+            setNextCursor(page.nextCursor);
+          }
+        }
+        if (notificationResult.status === "fulfilled") {
+          const nextInboundId = notificationResult.value.latestInboundMessageId;
+          if (
+            hasInboundSnapshot.current &&
+            nextInboundId !== null &&
+            nextInboundId !== latestInboundId.current
+          ) {
+            playNotificationSound("incoming-email");
+          }
+          latestInboundId.current = nextInboundId;
+          hasInboundSnapshot.current = true;
+        }
+
+        if (conversationResult.status === "rejected") throw conversationResult.reason;
+      })();
+      inFlight.current = { key: syncKey, promise };
+      const clearInFlight = (): void => {
+        if (inFlight.current?.promise === promise) inFlight.current = null;
+      };
+      void promise.then(clearInFlight, clearInFlight);
+      return promise;
+    },
+    [activeFolder, filters, labelId, mailboxId, refreshNotifications, search, syncKey, userId]
+  );
 
   React.useEffect(() => {
     if (paginationSyncKey.current === syncKey) return;
@@ -153,12 +184,14 @@ export function useMailSync({ activeFolder, mailboxId, search, userId }: MailSyn
     const interval = window.setInterval(runRefresh, refreshIntervalMs);
     window.addEventListener("focus", refreshWhenVisible);
     document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("online", refreshWhenVisible);
     navigator.serviceWorker?.addEventListener("message", handleServiceWorkerMessage);
     return () => {
       active = false;
       window.clearInterval(interval);
       window.removeEventListener("focus", refreshWhenVisible);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("online", refreshWhenVisible);
       navigator.serviceWorker?.removeEventListener("message", handleServiceWorkerMessage);
     };
   }, [refresh, userId]);
@@ -186,8 +219,10 @@ export function useMailSync({ activeFolder, mailboxId, search, userId }: MailSyn
     const promise = (async () => {
       try {
         const page = await listConversations({
+          ...conversationFilterApiParams(filters),
           cursor,
           folder: activeFolder,
+          labelId: labelId ?? undefined,
           mailboxId: mailboxId === "all" ? undefined : mailboxId,
           search: search || undefined
         });
@@ -211,7 +246,7 @@ export function useMailSync({ activeFolder, mailboxId, search, userId }: MailSyn
     };
     void promise.then(clearInFlight, clearInFlight);
     return promise;
-  }, [activeFolder, mailboxId, nextCursor, search, syncKey, userId]);
+  }, [activeFolder, filters, labelId, mailboxId, nextCursor, search, syncKey, userId]);
 
   const applyConversationAction = React.useCallback(
     (threadId: string, action: ConversationAction, affected: number): void => {

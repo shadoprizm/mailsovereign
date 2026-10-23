@@ -1,5 +1,6 @@
 import type * as React from "react";
 
+import { useBackDismiss } from "@/hooks/use-back-dismiss";
 import { ComposeWindow } from "./compose-window";
 import { ThreadComposeSurface } from "./thread-compose-surface";
 
@@ -22,18 +23,27 @@ export function ComposeSurface({
   title: string;
   onOpenChange: (open: boolean) => void;
 }): React.ReactElement {
+  const close = useBackDismiss(open, () => onOpenChange(false));
   return presentation === "thread" ? (
     <ThreadComposeSurface
       formId={formId}
       sendDisabled={sendDisabled}
       status={status}
       title={title}
-      onClose={() => onOpenChange(false)}
+      onClose={close}
     >
       {children}
     </ThreadComposeSurface>
   ) : (
-    <ComposeWindow open={open} status={status} title={title} onOpenChange={onOpenChange}>
+    <ComposeWindow
+      open={open}
+      status={status}
+      title={title}
+      onOpenChange={(next) => {
+        if (next) onOpenChange(true);
+        else close();
+      }}
+    >
       {children}
     </ComposeWindow>
   );

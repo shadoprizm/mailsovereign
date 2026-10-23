@@ -1,8 +1,14 @@
 import { newId, nowIso } from "../../db/client";
 import type { WorkerEnv } from "../../lib/env";
 import { AppError } from "../../lib/errors";
+import { ProviderError } from "../../providers/errors";
 import { getMailTransportForAddress } from "../../providers/resolver";
-import type { OutboundAttachment } from "../../providers/transport";
+import type {
+  MailSendResult,
+  MailTransport,
+  OutboundAttachment,
+  OutboundEmail
+} from "../../providers/transport";
 import { recordRecentRecipients } from "../contacts/queries";
 import { draftAttachmentObjects } from "../drafts/queries";
 import { findAddressIdentity } from "../mailboxes/address-queries";
@@ -22,6 +28,33 @@ import type { MessageSummary, StoredAttachment } from "../messages/types";
 import { buildReplyBody } from "./reply-body";
 import type { ReplyMessageInput, SendMessageInput } from "./validation";
 
+// Shared submission boundary for interactive, MCP and transactional sends.
+export async function submitMessage(
+  env: WorkerEnv,
+  email: OutboundEmail,
+  options: { requireSmtp?: boolean; expectedConnectionId?: string | null } = {}
+): Promise<MailSendResult> {
+  const address = typeof email.from === "string" ? email.from : email.from.email;
+  let transport: MailTransport;
+  try {
+    await ensureActiveMailbox(env.DB, address);
+    transport = await getMailTransportForAddress(
+      env,
+      address,
+      undefined,
+      options.requireSmtp,
+      options.expectedConnectionId
+    );
+  } catch (error) {
+    // No provider submission has started at this point. Preserve interactive errors.
+    if (options.expectedConnectionId === undefined) throw error;
+    throw error instanceof ProviderError
+      ? new ProviderError(error.code, error.providerId, true)
+      : new ProviderError("PROVIDER_UNAVAILABLE", null, true);
+  }
+  return transport.send(email);
+}
+
 export async function sendNewMessage(
   env: WorkerEnv,
   input: SendMessageInput,
@@ -37,8 +70,7 @@ export async function sendNewMessage(
     text: input.text
   };
   const attachments = await loadAttachments(env, input.attachmentIds, userId);
-  const transport = await getMailTransportForAddress(env, input.from);
-  const sendResult = await transport.send({
+  const sendResult = await submitMessage(env, {
     ...email,
     ...(input.cc.length ? { cc: input.cc } : {}),
     ...(input.bcc.length ? { bcc: input.bcc } : {}),
@@ -96,8 +128,7 @@ export async function replyToMessage(
       : { html: undefined, inlineAttachments: [] };
   const body = buildReplyBody(input, original, quoted.html);
   const outgoingAttachments = [...attachments, ...quoted.inlineAttachments];
-  const transport = await getMailTransportForAddress(env, input.from);
-  const sendResult = await transport.send({
+  const sendResult = await submitMessage(env, {
     from: input.from,
     to,
     ...(input.cc.length ? { cc: input.cc } : {}),

@@ -57,11 +57,13 @@ function windowBounds() {
   };
 }
 
-function closeCurrentWindow() {
-  if (!mainWindow) return;
-  mainWindow.removeAllListeners("closed");
-  mainWindow.destroy();
-  mainWindow = null;
+function replaceCurrentWindow(window) {
+  const previous = mainWindow;
+  mainWindow = window;
+  // Keep the replacement alive before destroying the previous window. Otherwise Electron emits
+  // window-all-closed during setup/server transitions and quits the application.
+  previous?.destroy();
+  return window;
 }
 
 function installMenu() {
@@ -106,20 +108,21 @@ function createBaseWindow(options = {}) {
 
 function showSetupWindow(options = {}) {
   loadError = options.loadError ?? null;
-  closeCurrentWindow();
-  mainWindow = createBaseWindow({
-    width: 720,
-    height: 680,
-    minWidth: 560,
-    minHeight: 600,
-    webPreferences: {
-      preload: join(desktopDirectory, "preload.cjs"),
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: true,
-      devTools: false
-    }
-  });
+  mainWindow = replaceCurrentWindow(
+    createBaseWindow({
+      width: 720,
+      height: 680,
+      minWidth: 560,
+      minHeight: 600,
+      webPreferences: {
+        preload: join(desktopDirectory, "preload.cjs"),
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+        devTools: false
+      }
+    })
+  );
   mainWindow.loadURL(setupUrl);
 }
 
@@ -133,17 +136,18 @@ function handleRemoteNavigation(event, target) {
 
 function showApplicationWindow() {
   loadError = null;
-  closeCurrentWindow();
-  mainWindow = createBaseWindow({
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: true,
-      devTools: false,
-      webSecurity: true,
-      allowRunningInsecureContent: false
-    }
-  });
+  mainWindow = replaceCurrentWindow(
+    createBaseWindow({
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+        devTools: false,
+        webSecurity: true,
+        allowRunningInsecureContent: false
+      }
+    })
+  );
 
   const { webContents } = mainWindow;
   const { session } = webContents;

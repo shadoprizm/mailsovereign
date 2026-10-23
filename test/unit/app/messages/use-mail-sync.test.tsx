@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createEmptyConversationFilters } from "@/features/messages/conversation-filters";
 import type { ConversationSummary } from "@/features/messages/types";
 import { useMailSync } from "@/features/messages/use-mail-sync";
 import { flushHookEffects, renderHook } from "../render-hook";
@@ -70,6 +71,30 @@ describe("useMailSync", () => {
     mocks.refreshNotifications.mockReset();
   });
 
+  it("discards loaded extra pages after an all-matching update changes unread filter membership", async () => {
+    const first = conversation("first", "2026-09-19T12:00:00Z");
+    const second = conversation("second", "2026-09-19T11:00:00Z");
+    mocks.listConversations
+      .mockResolvedValueOnce({ conversations: [first], nextCursor: "page-2", totalCount: 2 })
+      .mockResolvedValueOnce({ conversations: [second], nextCursor: null, totalCount: null })
+      .mockResolvedValueOnce({ conversations: [], nextCursor: null, totalCount: 0 });
+    mocks.refreshNotifications.mockResolvedValue(status("first"));
+    const hook = await renderHook(useMailSync, {
+      activeFolder: "inbox",
+      mailboxId: "all",
+      search: "",
+      userId: "user-1",
+      filters: { ...createEmptyConversationFilters(), read: "unread" as const }
+    });
+    await flushHookEffects(() => hook.result.loadMore());
+    expect(hook.result.conversations).toHaveLength(2);
+    await flushHookEffects(() => hook.result.refresh(true));
+    expect(hook.result.conversations).toEqual([]);
+    expect(hook.result.totalCount).toBe(0);
+    expect(hook.result.hasMore).toBe(false);
+    await hook.unmount();
+  });
+
   it("uses one refresh path for initial load, focus, unread state, and incoming sound", async () => {
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
@@ -118,6 +143,47 @@ describe("useMailSync", () => {
 
     expect(mocks.refreshNotifications).toHaveBeenCalledOnce();
     expect(mocks.toastError).toHaveBeenCalledWith("Conversations are unavailable.");
+    await hook.unmount();
+  });
+
+  it("refreshes and forwards structured filters as API query fields", async () => {
+    mocks.listConversations.mockResolvedValue({
+      conversations: [],
+      nextCursor: null,
+      totalCount: 0
+    });
+    mocks.refreshNotifications.mockResolvedValue(status("message-1"));
+    const initial = {
+      activeFolder: "inbox" as const,
+      filters: createEmptyConversationFilters(),
+      mailboxId: "all",
+      search: "",
+      userId: "user-1"
+    };
+    const hook = await renderHook(useMailSync, initial);
+    await flushHookEffects();
+
+    await hook.rerender({
+      ...initial,
+      filters: {
+        ...initial.filters,
+        after: "2026-09-10",
+        attachments: "with",
+        from: "client@example.com",
+        read: "unread"
+      }
+    });
+    await flushHookEffects();
+
+    expect(mocks.listConversations).toHaveBeenCalledTimes(2);
+    expect(mocks.listConversations).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        after: new Date(2026, 8, 10).toISOString(),
+        attachments: "with",
+        from: "client@example.com",
+        read: "unread"
+      })
+    );
     await hook.unmount();
   });
 

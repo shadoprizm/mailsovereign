@@ -27,7 +27,10 @@ export async function loadVerifiedRelease(options = {}) {
         `Expected signed Sovereign Mail ${options.expectedVersion}, received ${manifest.version}.`
       );
     }
-  } else if (compareVersions(manifest.version, options.checkedOutVersion ?? packageVersion) < 0) {
+  } else if (
+    !options.allowPublishedReleaseBehindCheckout &&
+    compareVersions(manifest.version, options.checkedOutVersion ?? packageVersion) < 0
+  ) {
     throw new Error(
       `Sovereign Mail ${options.checkedOutVersion ?? packageVersion} has not been published as a signed stable release yet.`
     );

@@ -4,9 +4,12 @@ import * as React from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { useTheme } from "@/features/theme/theme-provider";
 
 import { getMessageHtml, trustRemoteMediaSender } from "./api";
+import { EmailFrame } from "./email-frame";
+
+export { EmailFrame } from "./email-frame";
+
 import { buildEmailHtmlDocument } from "./html-document";
 import type { MessageDetail } from "./types";
 
@@ -15,31 +18,38 @@ type MessageHtmlProps = {
 };
 
 export function MessageHtml({ message }: MessageHtmlProps): React.ReactElement {
-  const { theme } = useTheme();
+  return <MessageHtmlContent key={message.id} message={message} />;
+}
+
+function MessageHtmlContent({ message }: MessageHtmlProps): React.ReactElement {
   const [html, setHtml] = React.useState<Awaited<ReturnType<typeof getMessageHtml>> | null>(null);
   const [loadRemoteImages, setLoadRemoteImages] = React.useState(false);
   const [loadingImages, setLoadingImages] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [savingTrust, setSavingTrust] = React.useState(false);
   const [quoteExpanded, setQuoteExpanded] = React.useState(false);
+  const active = React.useRef(false);
+  const busy = React.useRef(false);
 
   React.useEffect(() => {
-    let active = true;
+    active.current = true;
+    let current = true;
     setHtml(null);
     setError(null);
     setLoadRemoteImages(false);
     setQuoteExpanded(false);
     void getMessageHtml(message.id)
       .then((result) => {
-        if (!active) return;
+        if (!current) return;
         setHtml(result);
         setLoadRemoteImages(result.remoteMediaTrusted);
       })
       .catch(() => {
-        if (active) setError("HTML view is unavailable. Plain text is shown instead.");
+        if (current) setError("HTML view is unavailable. Plain text is shown instead.");
       });
     return () => {
-      active = false;
+      current = false;
+      active.current = false;
     };
   }, [message.id]);
 
@@ -50,10 +60,9 @@ export function MessageHtml({ message }: MessageHtmlProps): React.ReactElement {
         : buildEmailHtmlDocument({
             allowRemoteImages: loadRemoteImages,
             html: html.html,
-            origin: window.location.origin,
-            theme
+            origin: window.location.origin
           }),
-    [html, loadRemoteImages, theme]
+    [html, loadRemoteImages]
   );
   const renderedQuote = React.useMemo(
     () =>
@@ -61,38 +70,39 @@ export function MessageHtml({ message }: MessageHtmlProps): React.ReactElement {
         ? buildEmailHtmlDocument({
             allowRemoteImages: loadRemoteImages,
             html: html.quotedHtml,
-            origin: window.location.origin,
-            theme
+            origin: window.location.origin
           })
         : null,
-    [html, loadRemoteImages, theme]
+    [html, loadRemoteImages]
   );
 
-  async function loadImages(): Promise<void> {
+  async function loadImages(always = false): Promise<void> {
+    if (busy.current) return;
+    busy.current = true;
     setLoadingImages(true);
+    setSavingTrust(always);
     setError(null);
     try {
+      if (always) await trustRemoteMediaSender(message.id);
+      if (!active.current) return;
       const result = await getMessageHtml(message.id, true);
+      if (!active.current) return;
       setHtml(result);
       setLoadRemoteImages(true);
     } catch {
-      setError("Remote images could not be loaded.");
+      if (active.current) {
+        setError(
+          always
+            ? "The sender preference or images could not be loaded. Try again."
+            : "Remote images could not be loaded. Try again."
+        );
+      }
     } finally {
-      setLoadingImages(false);
-    }
-  }
-
-  async function alwaysLoadFromSender(): Promise<void> {
-    setSavingTrust(true);
-    setError(null);
-    try {
-      await trustRemoteMediaSender(message.id);
-      setHtml(await getMessageHtml(message.id, true));
-      setLoadRemoteImages(true);
-    } catch {
-      setError("The sender preference could not be saved.");
-    } finally {
-      setSavingTrust(false);
+      busy.current = false;
+      if (active.current) {
+        setLoadingImages(false);
+        setSavingTrust(false);
+      }
     }
   }
 
@@ -112,7 +122,7 @@ export function MessageHtml({ message }: MessageHtmlProps): React.ReactElement {
           direction={message.direction}
           fromAddress={message.fromAddress}
           loadingImages={loadingImages}
-          onAlwaysLoad={() => void alwaysLoadFromSender()}
+          onAlwaysLoad={() => void loadImages(true)}
           onLoad={() => void loadImages()}
           savingTrust={savingTrust}
         />
@@ -135,69 +145,6 @@ export function MessageHtml({ message }: MessageHtmlProps): React.ReactElement {
       ) : null}
     </div>
   );
-}
-
-export function EmailFrame({
-  srcDoc,
-  title
-}: {
-  srcDoc: string;
-  title: string;
-}): React.ReactElement {
-  const [height, setHeight] = React.useState(0);
-  const observerCleanup = React.useRef<(() => void) | null>(null);
-
-  React.useEffect(
-    () => () => {
-      observerCleanup.current?.();
-    },
-    []
-  );
-
-  return (
-    <iframe
-      className="block w-full border-0 bg-transparent"
-      height={height}
-      onLoad={(event) => {
-        observerCleanup.current?.();
-        observerCleanup.current = observeFrameHeight(event.currentTarget, setHeight);
-      }}
-      sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"
-      srcDoc={srcDoc}
-      title={title}
-    />
-  );
-}
-
-function observeFrameHeight(
-  frame: HTMLIFrameElement,
-  setHeight: React.Dispatch<React.SetStateAction<number>>
-): () => void {
-  const document = frame.contentDocument;
-  if (!document) return () => undefined;
-
-  const update = (): void => {
-    const nextHeight = Math.ceil(
-      Math.max(
-        document.body?.offsetHeight ?? 0,
-        document.body?.scrollHeight ?? 0,
-        document.documentElement.offsetHeight,
-        document.documentElement.scrollHeight
-      )
-    );
-    setHeight((current) => (current === nextHeight ? current : nextHeight));
-  };
-
-  update();
-  const observer = new ResizeObserver(update);
-  observer.observe(document.documentElement);
-  if (document.body) observer.observe(document.body);
-  document.addEventListener("load", update, true);
-
-  return () => {
-    observer.disconnect();
-    document.removeEventListener("load", update, true);
-  };
 }
 
 export function QuotedContentDivider({
@@ -248,12 +195,12 @@ export function RemoteImagesAlert({
       <AlertDescription className="flex flex-col items-start gap-3">
         <p>Loading them may tell the sender that you opened this message.</p>
         <div className="flex flex-wrap gap-2">
-          <Button disabled={loadingImages} onClick={onLoad} size="sm" type="button">
+          <Button disabled={loadingImages || savingTrust} onClick={onLoad} size="sm" type="button">
             Load images
           </Button>
           {direction === "inbound" && (
             <Button
-              disabled={savingTrust}
+              disabled={loadingImages || savingTrust}
               onClick={onAlwaysLoad}
               size="sm"
               title={`Always load remote images from ${fromAddress}`}

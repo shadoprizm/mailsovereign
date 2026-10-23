@@ -1,4 +1,9 @@
 import { nowIso } from "../db/client";
+import { processBulkOrganizationJob } from "../features/organization/bulk-service";
+import {
+  markProviderPurgeFailed,
+  processProviderImportPurge
+} from "../features/provider-connections/purge";
 import type { WorkerEnv } from "../lib/env";
 import { operationalLog } from "../observability/log";
 import {
@@ -8,10 +13,12 @@ import {
 } from "../providers/connections";
 import { ProviderError } from "../providers/errors";
 import { executeImapConnectionSync } from "../providers/imap/executor";
-import { providerId } from "../providers/types";
+import { type ProviderId, providerId } from "../providers/types";
 import { isJob, type Job } from "./types";
 
 const batchSize = 100;
+const providerSyncLeaseMinutes = 20;
+const providerSyncContinuationDelaySeconds = 5;
 
 async function deleteExpiredRows(env: WorkerEnv): Promise<Record<string, number>> {
   const nowSeconds = Math.floor(Date.now() / 1000);
@@ -98,6 +105,22 @@ async function integrityCounters(env: WorkerEnv): Promise<Record<string, number>
 export async function processJob(env: WorkerEnv, job: Job): Promise<void> {
   const startedAt = nowIso();
   if (!(await claimJobRun(env.DB, job, startedAt))) return;
+  let providerLease: { owner: ProviderId; token: string } | null = null;
+  if (job.kind === "provider-sync") {
+    const owner = providerId(job.providerId);
+    const token = crypto.randomUUID();
+    if (!(await claimProviderSyncLease(env.DB, owner, token, startedAt))) {
+      await env.DB.prepare(
+        `UPDATE operation_runs SET status = 'succeeded', counters_json = ?, finished_at = ?
+         WHERE id = ?`
+      )
+        .bind(JSON.stringify({ skipped: 1 }), nowIso(), job.id)
+        .run();
+      operationalLog("info", "job_skipped", { jobId: job.id, kind: job.kind });
+      return;
+    }
+    providerLease = { owner, token };
+  }
   try {
     const counters = await jobCounters(env, job);
     await env.DB.prepare(
@@ -106,6 +129,19 @@ export async function processJob(env: WorkerEnv, job: Job): Promise<void> {
     )
       .bind(JSON.stringify(counters), nowIso(), job.id)
       .run();
+    if (job.kind === "provider-sync" && counters.forwardHasMore === 1) {
+      if (!env.SOVEREIGN_MAIL_JOBS) throw new Error("SOVEREIGN_MAIL_JOBS binding is required.");
+      const requestedAt = nowIso();
+      await env.SOVEREIGN_MAIL_JOBS.send(
+        {
+          id: `provider-sync:${job.providerId}:continuation:${crypto.randomUUID()}`,
+          kind: "provider-sync",
+          providerId: job.providerId,
+          requestedAt
+        },
+        { delaySeconds: providerSyncContinuationDelaySeconds }
+      );
+    }
     operationalLog("info", "job_succeeded", { jobId: job.id, kind: job.kind });
   } catch (error) {
     if (job.kind === "provider-sync") {
@@ -115,6 +151,9 @@ export async function processJob(env: WorkerEnv, job: Job): Promise<void> {
         error instanceof ProviderError ? error.code : "PROVIDER_SYNC_FAILED"
       ).catch(() => undefined);
     }
+    if (job.kind === "provider-purge") {
+      await markProviderPurgeFailed(env.DB, job.purgeId).catch(() => undefined);
+    }
     await env.DB.prepare(
       `UPDATE operation_runs SET status = 'failed', error_code = ?, finished_at = ? WHERE id = ?`
     )
@@ -122,6 +161,12 @@ export async function processJob(env: WorkerEnv, job: Job): Promise<void> {
       .run();
     operationalLog("error", "job_failed", { jobId: job.id, kind: job.kind });
     throw error;
+  } finally {
+    if (providerLease) {
+      await releaseProviderSyncLease(env.DB, providerLease.owner, providerLease.token).catch(
+        () => undefined
+      );
+    }
   }
 }
 
@@ -133,11 +178,47 @@ export async function claimJobRun(db: D1Database, job: Job, startedAt: string): 
      ON CONFLICT(id) DO UPDATE SET
        status = 'running', counters_json = '{}', error_code = NULL,
        started_at = excluded.started_at, finished_at = NULL
-     WHERE operation_runs.status = 'failed'`
+     WHERE operation_runs.status = 'failed'
+       OR (operation_runs.status = 'running'
+         AND julianday(operation_runs.started_at) < julianday(excluded.started_at, '-1 minute'))`
     )
     .bind(job.id, job.kind, startedAt)
     .run();
   return (claimed.meta.changes ?? 0) > 0;
+}
+
+export async function claimProviderSyncLease(
+  db: D1Database,
+  owner: ProviderId,
+  token: string,
+  startedAt: string
+): Promise<boolean> {
+  const lease = await db
+    .prepare(
+      `INSERT INTO deployment_state (key, value_json, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET
+         value_json = excluded.value_json, updated_at = excluded.updated_at
+       WHERE julianday(deployment_state.updated_at) <
+         julianday(excluded.updated_at, '-${providerSyncLeaseMinutes} minutes')`
+    )
+    .bind(providerSyncLeaseKey(owner), JSON.stringify({ token }), startedAt)
+    .run();
+  return (lease.meta.changes ?? 0) > 0;
+}
+
+export async function releaseProviderSyncLease(
+  db: D1Database,
+  owner: ProviderId,
+  token: string
+): Promise<void> {
+  await db
+    .prepare("DELETE FROM deployment_state WHERE key = ? AND value_json = ?")
+    .bind(providerSyncLeaseKey(owner), JSON.stringify({ token }))
+    .run();
+}
+
+function providerSyncLeaseKey(owner: ProviderId): string {
+  return `provider-sync-lease:${owner}`;
 }
 
 async function jobCounters(env: WorkerEnv, job: Job): Promise<Record<string, number>> {
@@ -145,6 +226,8 @@ async function jobCounters(env: WorkerEnv, job: Job): Promise<Record<string, num
     return { ...(await deleteExpiredRows(env)), retainedMessages: await applyRetention(env) };
   }
   if (job.kind === "integrity-scan") return integrityCounters(env);
+  if (job.kind === "provider-purge") return processProviderImportPurge(env, job.purgeId);
+  if (job.kind === "organization-bulk") return processBulkOrganizationJob(env, job.runId);
   const owner = providerId(job.providerId);
   const connection = await getImapSmtpConnection(env.DB, owner);
   if (!connection.isEnabled || !connection.verifiedAt || !connection.mailboxAddress) {
@@ -157,7 +240,9 @@ async function jobCounters(env: WorkerEnv, job: Job): Promise<Record<string, num
     fetched: result.fetched,
     inserted: result.inserted,
     duplicates: result.duplicates,
-    hasMore: result.hasMore ? 1 : 0
+    quarantined: result.quarantined,
+    hasMore: result.hasMore ? 1 : 0,
+    forwardHasMore: result.forwardHasMore ? 1 : 0
   };
 }
 

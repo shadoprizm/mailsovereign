@@ -54,3 +54,7 @@ Authentication cookies and ordinary Chromium site storage remain in the desktop 
 profile. Uninstalling the package does not remove that profile automatically. Remove the Sovereign
 Mail application data from the Ubuntu user profile separately if the workstation is being
 decommissioned.
+
+The connection screen and **Change Server** action replace the current window while keeping the
+application running. The HTTPS deployment remains the source of the reader and image-loading
+behavior, so the desktop client uses the same remote-image permissions as the browser.

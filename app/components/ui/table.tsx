@@ -2,23 +2,44 @@ import * as React from "react";
 
 import { cn } from "@/lib/cn";
 
+const TableLabels = React.createContext<string[]>([]);
+
+function nodeText(node: React.ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (React.isValidElement<{ children?: React.ReactNode }>(node))
+    return nodeText(node.props.children);
+  return React.Children.toArray(node).map(nodeText).join(" ");
+}
+
+function headerLabels(node: React.ReactNode): string[] {
+  return React.Children.toArray(node).flatMap((child) => {
+    if (!React.isValidElement<{ children?: React.ReactNode }>(child)) return [];
+    if (child.type === TableHead) return [nodeText(child.props.children).trim() || "Actions"];
+    return headerLabels(child.props.children);
+  });
+}
+
 type TableProps = React.HTMLAttributes<HTMLTableElement> & {
   containerClassName?: string;
 };
 
 export const Table = React.forwardRef<HTMLTableElement, TableProps>(
-  ({ className, containerClassName, ...props }, ref) => (
-    <div
-      className={cn("relative w-full overflow-auto", containerClassName)}
-      data-slot="table-container"
-    >
-      <table
-        className={cn("w-full caption-bottom text-sm", className)}
-        data-slot="table"
-        ref={ref}
-        {...props}
-      />
-    </div>
+  ({ className, containerClassName, children, ...props }, ref) => (
+    <TableLabels.Provider value={headerLabels(children)}>
+      <div
+        className={cn("relative w-full overflow-auto", containerClassName)}
+        data-slot="table-container"
+      >
+        <table
+          className={cn("w-full caption-bottom text-sm", className)}
+          data-slot="table"
+          ref={ref}
+          {...props}
+        >
+          {children}
+        </table>
+      </div>
+    </TableLabels.Provider>
   )
 );
 Table.displayName = "Table";
@@ -42,16 +63,30 @@ TableBody.displayName = "TableBody";
 export const TableRow = React.forwardRef<
   HTMLTableRowElement,
   React.HTMLAttributes<HTMLTableRowElement>
->(({ className, ...props }, ref) => (
-  <tr
-    className={cn(
-      "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted/50",
-      className
-    )}
-    ref={ref}
-    {...props}
-  />
-));
+>(({ className, children, ...props }, ref) => {
+  const labels = React.useContext(TableLabels);
+  const cells = React.Children.toArray(children).filter(React.isValidElement);
+  return (
+    <tr
+      className={cn(
+        "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted/50",
+        className
+      )}
+      ref={ref}
+      {...props}
+    >
+      {cells.map((cell, index) =>
+        React.isValidElement<
+          React.TdHTMLAttributes<HTMLTableCellElement> & { "data-label"?: string }
+        >(cell) &&
+        cell.type === TableCell &&
+        !cell.props.colSpan
+          ? React.cloneElement(cell, { "data-label": labels[index] ?? "" })
+          : cell
+      )}
+    </tr>
+  );
+});
 TableRow.displayName = "TableRow";
 
 export const TableHead = React.forwardRef<

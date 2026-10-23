@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { upsertMailDomain } from "@worker/features/domains/queries";
+import { createMailbox } from "@worker/features/mailboxes/service";
 import { ensureProviderMailbox } from "@worker/features/provider-connections/service";
 import type { ImapSmtpConnectionRecord } from "@worker/providers/connections";
 import { providerId } from "@worker/providers/types";
@@ -11,7 +13,9 @@ const migrations = [
   "0002_workspace.sql",
   "0009_login_email_domain_isolation.sql",
   "0011_provider_connections.sql",
-  "0014_provider_delivery_routing.sql"
+  "0014_provider_delivery_routing.sql",
+  "0020_sovereign_product_identity.sql",
+  "0022_external_provider_domains.sql"
 ].map((name) => readFileSync(resolve("migrations", name), "utf8"));
 
 function d1From(db: DatabaseSync): D1Database {
@@ -78,12 +82,13 @@ describe("verified provider mailbox provisioning", () => {
     expect(
       sqlite
         .prepare(
-          `SELECT name, receiving_status, sending_status, dns_status
+          `SELECT name, kind, receiving_status, sending_status, dns_status
            FROM mail_domains WHERE name = 'example.com'`
         )
         .get()
     ).toEqual({
       name: "example.com",
+      kind: "external",
       receiving_status: "ready",
       sending_status: "ready",
       dns_status: "ready"
@@ -102,7 +107,7 @@ describe("verified provider mailbox provisioning", () => {
     ).toEqual({ count: 1 });
   });
 
-  it("keeps a workspace Login email domain outside managed mail", async () => {
+  it("allows an external provider mailbox to match the workspace Login email domain", async () => {
     const { db, sqlite } = database();
     sqlite
       .prepare(
@@ -112,8 +117,69 @@ describe("verified provider mailbox provisioning", () => {
       )
       .run("2026-08-17T12:00:00.000Z", "2026-08-17T12:00:00.000Z");
 
-    await expect(ensureProviderMailbox(db, connection())).rejects.toMatchObject({
+    await expect(ensureProviderMailbox(db, connection("owner@example.com"))).resolves.toMatchObject(
+      {
+        address: "owner@example.com"
+      }
+    );
+    expect(
+      sqlite.prepare("SELECT kind FROM mail_domains WHERE name = 'example.com'").get()
+    ).toEqual({
+      kind: "external"
+    });
+  });
+
+  it("refuses to convert a Login email's external provider domain to managed", async () => {
+    const { db, sqlite } = database();
+    sqlite
+      .prepare(
+        `INSERT INTO "user"
+         (id, name, email, emailVerified, createdAt, updatedAt, role)
+         VALUES ('owner-1', 'Owner', 'owner@example.com', 1, ?, ?, 'owner')`
+      )
+      .run("2026-08-17T12:00:00.000Z", "2026-08-17T12:00:00.000Z");
+    await ensureProviderMailbox(db, connection("owner@example.com"));
+
+    await expect(upsertMailDomain(db, { name: "example.com" })).rejects.toMatchObject({
       code: "DOMAIN_USED_BY_LOGIN_EMAIL"
+    });
+  });
+
+  it("does not downgrade an existing managed domain when a provider uses it", async () => {
+    const { db, sqlite } = database();
+    await upsertMailDomain(db, {
+      name: "example.com",
+      receivingStatus: "degraded",
+      sendingStatus: "degraded",
+      dnsStatus: "degraded"
+    });
+
+    await ensureProviderMailbox(db, connection());
+
+    expect(
+      sqlite
+        .prepare(
+          `SELECT kind, receiving_status, sending_status, dns_status
+           FROM mail_domains WHERE name = 'example.com'`
+        )
+        .get()
+    ).toEqual({
+      kind: "managed",
+      receiving_status: "degraded",
+      sending_status: "degraded",
+      dns_status: "degraded"
+    });
+  });
+
+  it("requires a verified connection for each external provider mailbox", async () => {
+    const { db } = database();
+    await ensureProviderMailbox(db, connection("owner@gmail.com"));
+
+    await expect(
+      createMailbox(db, { address: "someone-else@gmail.com", displayName: "Someone Else" })
+    ).rejects.toMatchObject({
+      code: "DOMAIN_NOT_REGISTERED",
+      message: "Add and enable a managed email domain first."
     });
   });
 });

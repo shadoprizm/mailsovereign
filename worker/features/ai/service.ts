@@ -1,13 +1,8 @@
-import { z } from "zod";
-
 import { accessibleMailboxIds, requireMailboxAccess } from "../../auth/mailbox-access";
 import type { AuthContext } from "../../auth/session";
-import type { WorkerEnv } from "../../lib/env";
 import { AppError } from "../../lib/errors";
-import { aiPlan } from "../billing/plans";
 import {
   aiCreditBalance,
-  readAiSubscription,
   recordAiUsage,
   refundAiCredits,
   reserveAiCredits
@@ -15,29 +10,13 @@ import {
 import type { AiModelId } from "../billing/types";
 import { getMessageDetail, listThreadMessages } from "../messages/queries";
 import type { MessageDetail } from "../messages/types";
+import { assertOrganizationAiAvailable } from "./organization-service";
+import { runCustomerAi } from "./provider";
+import { type AiActionEnv, type AiProviderOutput, aiOutputSchema, modelNames } from "./runtime";
 import type { AiActionResult, AiComposeMode, AiComposeResult, AiFeatureId } from "./types";
 import { readAiWritingProfile } from "./writing-profile";
 
-const modelNames = {
-  fast: "@cf/meta/llama-3.1-8b-instruct-fp8",
-  quality: "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
-} as const;
-
-const aiOutputSchema = z.object({
-  response: z.string().trim().min(1).max(12_000),
-  usage: z
-    .object({
-      prompt_tokens: z.number().int().nonnegative(),
-      completion_tokens: z.number().int().nonnegative(),
-      total_tokens: z.number().int().nonnegative()
-    })
-    .optional()
-});
-
-type AiActionEnv = Pick<
-  WorkerEnv,
-  "DB" | "STRIPE_AI_PRO_PRICE_ID" | "STRIPE_AI_STARTER_PRICE_ID"
-> & { AI?: Pick<Ai, "run"> };
+export { runOrganizationAiAction } from "./organization-service";
 
 export async function runConversationAiAction(
   env: AiActionEnv,
@@ -156,48 +135,42 @@ async function runMeteredAiAction<TFeature extends AiUsageFeature>(
     temperature: number;
   }
 ): Promise<MeteredAiResult<TFeature>> {
-  const subscription = await readAiSubscription(env.DB);
-  if (subscription.status !== "active" && subscription.status !== "trialing") {
-    throw new AppError(
-      "AI_SUBSCRIPTION_REQUIRED",
-      "Choose a Sovereign AI plan to use built-in models.",
-      402
-    );
-  }
-  const plan = aiPlan(env, subscription.plan_id);
-  if (!plan.models.includes(input.model)) {
-    throw new AppError(
-      "AI_MODEL_UPGRADE_REQUIRED",
-      "The quality model requires the AI Pro plan.",
-      402
-    );
-  }
-  if (!env.AI) throw new AppError("AI_NOT_CONFIGURED", "Built-in AI is not configured.", 503);
+  const provider = await assertOrganizationAiAvailable(env, input.model);
 
   const requestId = crypto.randomUUID();
-  const credits = creditCost(input.feature, input.model);
-  await reserveAiCredits(env.DB, {
-    amount: credits,
-    requestId,
-    userId: input.userId
-  });
-
-  let parsed: z.infer<typeof aiOutputSchema>;
-  try {
-    const raw = await env.AI.run(modelNames[input.model], {
-      messages: input.messages,
-      max_tokens: input.maxTokens,
-      temperature: input.temperature
-    });
-    const result = aiOutputSchema.safeParse(raw);
-    if (!result.success) throw new Error("Invalid AI response");
-    parsed = result.data;
-  } catch {
-    await refundAiCredits(env.DB, {
+  const credits = provider ? 0 : creditCost(input.feature, input.model);
+  if (credits > 0)
+    await reserveAiCredits(env.DB, {
       amount: credits,
       requestId,
       userId: input.userId
     });
+
+  let parsed: AiProviderOutput;
+  try {
+    const modelInput = {
+      messages: input.messages,
+      max_tokens: input.maxTokens,
+      temperature: input.temperature
+    };
+    const raw = provider
+      ? await runCustomerAi(
+          env,
+          provider,
+          input.model === "quality" ? provider.quality_model : provider.fast_model,
+          modelInput
+        )
+      : await env.AI?.run(modelNames[input.model], modelInput);
+    const result = aiOutputSchema.safeParse(raw);
+    if (!result.success) throw new Error("Invalid AI response");
+    parsed = result.data;
+  } catch {
+    if (credits > 0)
+      await refundAiCredits(env.DB, {
+        amount: credits,
+        requestId,
+        userId: input.userId
+      });
     await recordAiUsage(env.DB, {
       requestId,
       userId: input.userId,
@@ -210,7 +183,9 @@ async function runMeteredAiAction<TFeature extends AiUsageFeature>(
     });
     throw new AppError(
       "AI_PROVIDER_UNAVAILABLE",
-      "The AI model is temporarily unavailable. No credits were used.",
+      provider
+        ? "Your AI provider is unavailable. Check AI settings. No Sovereign credits were used; provider charges may apply."
+        : "The AI model is temporarily unavailable. No credits were used.",
       503
     );
   }

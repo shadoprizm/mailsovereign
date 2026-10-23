@@ -54,7 +54,7 @@ export function MobileNavigation({
         <SheetTrigger asChild>
           <Button
             aria-label="Open navigation"
-            className="size-11 shrink-0 text-muted-foreground md:hidden"
+            className="size-10 shrink-0 rounded-lg text-muted-foreground md:hidden"
             ref={menuTriggerRef}
             size="icon"
             title="Open navigation"

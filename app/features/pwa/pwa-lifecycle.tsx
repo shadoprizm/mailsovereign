@@ -38,7 +38,7 @@ export function PwaLifecycle(): React.ReactElement | null {
   return (
     <aside
       aria-live="polite"
-      className="fixed right-4 bottom-4 left-4 z-[100] mx-auto flex max-w-xl items-center justify-between gap-4 rounded-lg border border-border bg-popover px-4 py-3 text-sm text-popover-foreground shadow-lg"
+      className="fixed right-4 bottom-[calc(env(safe-area-inset-bottom)+4.5rem)] md:bottom-4 left-4 z-[100] mx-auto flex max-w-xl items-center justify-between gap-4 rounded-lg border border-border bg-popover px-4 py-3 text-sm text-popover-foreground shadow-lg"
       role="status"
     >
       <span>

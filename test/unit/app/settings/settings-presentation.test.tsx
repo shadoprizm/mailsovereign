@@ -55,6 +55,7 @@ const member: WorkspaceUser = {
 const connectedDomain: MailDomain = {
   id: "domain-1",
   name: "example.com",
+  kind: "managed",
   zoneId: "zone-1",
   accountId: "account-1",
   receivingStatus: "ready",

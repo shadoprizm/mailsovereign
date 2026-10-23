@@ -1,0 +1,30 @@
+[Unit]
+Description=Sovereign Mail encrypted IMAP and SMTP gateway
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=sovereign-mail-gateway
+Group=sovereign-mail-gateway
+WorkingDirectory=/opt/sovereign-mail/gateway
+EnvironmentFile=/etc/sovereign-mail/gateway.env
+ExecStart=/usr/bin/node /opt/sovereign-mail/gateway/src/main.mjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+NoNewPrivileges=true
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LimitNOFILE=1024
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

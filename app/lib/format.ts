@@ -16,3 +16,19 @@ export function initials(name: string): string {
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("");
 }
+
+/** Short inbox timestamps leave room for the sender on a phone. */
+export function formatInboxDate(value: string, now = new Date()): string {
+  const date = new Date(value);
+  const today = date.toDateString() === now.toDateString();
+  return new Intl.DateTimeFormat(
+    undefined,
+    today
+      ? { hour: "numeric", minute: "2-digit" }
+      : {
+          month: "short",
+          day: "numeric",
+          ...(date.getFullYear() !== now.getFullYear() ? { year: "numeric" as const } : {})
+        }
+  ).format(date);
+}

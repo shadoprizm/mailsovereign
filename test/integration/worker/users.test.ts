@@ -10,10 +10,13 @@ import pushMigration from "../../../migrations/0006_push_notifications.sql?raw";
 import userMailPreferencesMigration from "../../../migrations/0007_user_mail_preferences.sql?raw";
 import userOnboardingMigration from "../../../migrations/0008_user_onboarding.sql?raw";
 import loginEmailDomainMigration from "../../../migrations/0009_login_email_domain_isolation.sql?raw";
+import providerConnectionsMigration from "../../../migrations/0011_provider_connections.sql?raw";
+import providerDeliveryRoutingMigration from "../../../migrations/0014_provider_delivery_routing.sql?raw";
 import emailSignaturesMigration from "../../../migrations/0015_email_signatures.sql?raw";
 import managedServiceMigration from "../../../migrations/0016_managed_service.sql?raw";
 import aiAccessMigration from "../../../migrations/0017_ai_access.sql?raw";
 import aiWritingProfilesMigration from "../../../migrations/0019_ai_writing_profiles.sql?raw";
+import externalProviderDomainsMigration from "../../../migrations/0022_external_provider_domains.sql?raw";
 import { createAuth } from "../../../worker/auth/auth";
 import { migrationStatements } from "./migration-statements";
 
@@ -32,10 +35,13 @@ describe("workspace user onboarding", () => {
       userMailPreferencesMigration,
       userOnboardingMigration,
       loginEmailDomainMigration,
+      providerConnectionsMigration,
+      providerDeliveryRoutingMigration,
       emailSignaturesMigration,
       managedServiceMigration,
       aiAccessMigration,
-      aiWritingProfilesMigration
+      aiWritingProfilesMigration,
+      externalProviderDomainsMigration
     ]) {
       await applyMigration(migration);
     }

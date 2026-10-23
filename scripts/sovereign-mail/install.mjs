@@ -2,6 +2,7 @@ import { optionalBoolean, optionalString, requireString } from "./args.mjs";
 import { parseD1DatabaseId, run } from "./command.mjs";
 import { writeWranglerConfig } from "./config.mjs";
 import { configPath, ensureDeploymentDir, manifestExists, writeManifest } from "./manifest.mjs";
+import { nativeMailConfig } from "./native-mail-config.mjs";
 
 export function install(flags) {
   const name = requireString(flags, "name");
@@ -25,7 +26,8 @@ export function install(flags) {
     workerName: optionalString(flags, "worker-name"),
     d1Name: optionalString(flags, "d1-name"),
     r2Bucket: optionalString(flags, "r2-bucket"),
-    queueName: optionalString(flags, "queue-name")
+    queueName: optionalString(flags, "queue-name"),
+    nativeMailHost: optionalString(flags, "native-mail-host")
   });
 
   if (!dryRun) {
@@ -120,6 +122,7 @@ export function createManifest(name, input) {
     appDomain: input.appDomain,
     authUrl: input.authUrl,
     cloudflareOAuth,
+    ...(input.nativeMailHost ? { nativeMail: nativeMailConfig(input.nativeMailHost) } : {}),
     email: input.domain
       ? {
           domain: input.domain,

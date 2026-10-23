@@ -1,10 +1,21 @@
 import { Hono } from "hono";
 
-import { requireAuthContext } from "../../auth/session";
+import {
+  requireAuthContext,
+  requireRecentSessionForEnvironment,
+  requireRole
+} from "../../auth/session";
 import type { HonoApp } from "../../lib/env";
 import { readJson } from "../../lib/json";
 import { parseWith } from "../../lib/validation";
 import { enforceRateLimit } from "../../security/rate-limit";
+import {
+  aiProviderSchema,
+  publicAiProvider,
+  readAiProvider,
+  saveAiProvider,
+  testAiProvider
+} from "./provider";
 import { runComposeAiAction, runConversationAiAction } from "./service";
 import { aiActionSchema, aiComposeSchema, writingProfileSchema } from "./types";
 import { readAiWritingProfile, saveAiWritingProfile } from "./writing-profile";
@@ -49,3 +60,35 @@ function enforceAiRateLimit(env: HonoApp["Bindings"], userId: string): Promise<v
     windowSeconds: 60
   });
 }
+
+aiRoutes.get("/provider", async (c) => {
+  await requireAuthContext(c.env, c.req.raw);
+  return c.json(publicAiProvider(await readAiProvider(c.env.DB)));
+});
+
+aiRoutes.put("/provider", async (c) => {
+  const auth = await requireAuthContext(c.env, c.req.raw);
+  requireRole(auth, ["owner"]);
+  requireRecentSessionForEnvironment(auth, c.env);
+  return c.json(
+    await saveAiProvider(c.env, parseWith(aiProviderSchema, await readJson(c.req.raw)))
+  );
+});
+
+aiRoutes.post("/provider/test", async (c) => {
+  const auth = await requireAuthContext(c.env, c.req.raw);
+  requireRole(auth, ["owner"]);
+  requireRecentSessionForEnvironment(auth, c.env);
+  await enforceAiRateLimit(c.env, auth.user.id);
+  return c.json(
+    await testAiProvider(c.env, parseWith(aiProviderSchema, await readJson(c.req.raw)))
+  );
+});
+
+aiRoutes.delete("/provider", async (c) => {
+  const auth = await requireAuthContext(c.env, c.req.raw);
+  requireRole(auth, ["owner"]);
+  requireRecentSessionForEnvironment(auth, c.env);
+  await c.env.DB.prepare("DELETE FROM ai_provider_connection WHERE singleton = 1").run();
+  return c.json(publicAiProvider(null));
+});

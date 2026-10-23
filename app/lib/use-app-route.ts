@@ -19,7 +19,19 @@ export function useAppRoute(setupComplete: boolean | undefined): {
       setRoute(nextRoute);
       return;
     }
-    window.history[replace ? "replaceState" : "pushState"](null, "", path);
+    if (
+      !replace &&
+      nextRoute.kind === "mail" &&
+      !nextRoute.messageId &&
+      window.history.state?.sovereignMailParent === path
+    ) {
+      window.history.back();
+      return;
+    }
+    const state = replace
+      ? window.history.state
+      : { sovereignMailParent: window.location.pathname };
+    window.history[replace ? "replaceState" : "pushState"](state, "", path);
     setRoute(nextRoute);
   }, []);
 

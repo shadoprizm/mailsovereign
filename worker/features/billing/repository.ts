@@ -136,7 +136,7 @@ export async function recordAiUsage(
   input: {
     requestId: string;
     userId: string;
-    feature: "summarize" | "draft_reply" | "extract_tasks" | "compose_draft";
+    feature: "summarize" | "draft_reply" | "extract_tasks" | "compose_draft" | "organize";
     model: AiModelId;
     inputUnits: number;
     outputUnits: number;

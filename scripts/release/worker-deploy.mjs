@@ -18,7 +18,9 @@ export function deploySource(cwd, options = {}) {
   const execute = options.run ?? run;
   const attempt = options.attempt ?? attemptRun;
   const workersCi = options.workersCi ?? process.env.WORKERS_CI === "1";
-  const workerName = options.workerName ?? workerNameFromConfigFile(resolve(cwd, "wrangler.jsonc"));
+  const configFile = resolve(options.configFile ?? resolve(cwd, "wrangler.jsonc"));
+  const workerName = options.workerName ?? workerNameFromConfigFile(configFile);
+  const configArgs = options.configFile ? ["--config", configFile] : [];
   const deployArgs = [
     "exec",
     "wrangler",
@@ -26,6 +28,10 @@ export function deploySource(cwd, options = {}) {
     "--var",
     `SOVEREIGN_MAIL_WORKER_NAME:${workerName}`
   ];
+  deployArgs.push(...configArgs);
+  for (const [name, value] of Object.entries(options.vars ?? {})) {
+    deployArgs.push("--var", `${name}:${value}`);
+  }
   if (options.releaseTag) deployArgs.push("--tag", options.releaseTag);
 
   if (!workersCi) {
@@ -35,7 +41,7 @@ export function deploySource(cwd, options = {}) {
 
   const inspection = attempt(
     "pnpm",
-    ["exec", "wrangler", "secret", "list", "--format", "json"],
+    ["exec", "wrangler", "secret", "list", "--format", "json", ...configArgs],
     cwd
   );
   let missingSecrets;
@@ -139,7 +145,7 @@ export function executeSql(cwd, command, options = {}) {
       "--command",
       command,
       "--config",
-      "wrangler.jsonc"
+      resolve(options.configFile ?? resolve(cwd, "wrangler.jsonc"))
     ],
     cwd
   );
