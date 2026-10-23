@@ -14,6 +14,7 @@ export type StoreInboundInput = {
   raw: ArrayBuffer;
   parsed: ParsedEmail;
   dedupeKey?: string;
+  sourceProviderConnectionId?: string;
 };
 
 export type StoreInboundResult = {
@@ -44,6 +45,12 @@ export async function storeInboundEmail(
   const dedupeKey = initialPlan.dedupeKey;
   const duplicate = dedupeKey ? await findDuplicate(db, dedupeKey) : null;
   if (duplicate) {
+    if (input.sourceProviderConnectionId) {
+      await db
+        .prepare("UPDATE messages SET source_provider_connection_id = ? WHERE id = ?")
+        .bind(input.sourceProviderConnectionId, duplicate.id)
+        .run();
+    }
     return { inserted: false, message: duplicate };
   }
 
@@ -98,7 +105,8 @@ export async function storeInboundEmail(
     sentAt: null,
     readAt: null,
     hasAttachments: input.parsed.attachments.length > 0,
-    deliveredToAddressId: receivingIdentity?.address.id ?? null
+    deliveredToAddressId: receivingIdentity?.address.id ?? null,
+    sourceProviderConnectionId: input.sourceProviderConnectionId ?? null
   });
 
   for (const attachment of input.parsed.attachments) {

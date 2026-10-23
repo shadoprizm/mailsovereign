@@ -1,7 +1,22 @@
-import { Archive, ArrowLeft, Forward, MailOpen, Reply, Star, Trash2 } from "lucide-react";
+import {
+  Archive,
+  ArrowLeft,
+  Forward,
+  MailOpen,
+  MoreHorizontal,
+  Reply,
+  Star,
+  Trash2
+} from "lucide-react";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import { PullToRefresh } from "@/components/ui/pull-to-refresh";
 import { ConversationAi } from "@/features/ai/conversation-ai";
 import type { ComposeMode } from "@/features/compose/compose-state";
@@ -59,16 +74,22 @@ export function MessageDetail({
   const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   if (isLoading) {
-    return <MessageReaderStatus label="Loading conversation" />;
+    return <MessageReaderStatus label="Loading conversation" {...(showBack ? { onBack } : {})} />;
   }
 
   if (error) {
-    return <MessageReaderStatus description={error} label="Conversation unavailable" />;
+    return (
+      <MessageReaderStatus
+        description={error}
+        label="Conversation unavailable"
+        {...(showBack ? { onBack } : {})}
+      />
+    );
   }
 
   const selected = messages.find((message) => message.id === selectedId) ?? messages.at(-1) ?? null;
   if (!selected) {
-    return <MessageReaderStatus label="Select a message" />;
+    return <MessageReaderStatus label="Select a message" {...(showBack ? { onBack } : {})} />;
   }
   const replyTarget =
     selected.direction === "inbound"
@@ -82,8 +103,8 @@ export function MessageDetail({
   return (
     <>
       <article className="flex h-full flex-col bg-background">
-        <div className="shrink-0 border-b bg-background px-3 py-3 sm:px-5">
-          <div className="flex items-start gap-2">
+        <div className="shrink-0 border-b bg-background px-3 py-2 md:mx-0 md:mt-0 md:rounded-none md:border-x-0 md:border-t-0 md:bg-background md:px-5 md:shadow-none">
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-3 md:flex">
             {showBack ? (
               <Button
                 aria-label="Back to messages"
@@ -96,10 +117,10 @@ export function MessageDetail({
                 <ArrowLeft />
               </Button>
             ) : null}
-            <h1 className="min-w-0 flex-1 break-words pt-2 text-lg font-medium tracking-tight sm:text-xl lg:pt-1">
+            <h1 className="min-w-0 flex-1 break-words pt-2 text-lg font-medium tracking-tight md:text-xl lg:pt-1">
               {selected.subject}
             </h1>
-            <div className="flex shrink-0 flex-wrap gap-0.5 rounded-md border bg-card p-0.5">
+            <div className="col-span-2 hidden md:flex w-full shrink-0 flex-wrap justify-between gap-0.5 rounded-lg border bg-background/70 p-1 md:w-auto md:justify-start md:rounded-md md:bg-card md:p-0.5">
               <IconButton
                 label={isUnread ? "Mark conversation read" : "Mark conversation unread"}
                 onClick={() => onAction(isUnread ? "read" : "unread")}
@@ -150,7 +171,7 @@ export function MessageDetail({
             messages={messages}
             onCompose={(message, mode) => setComposeState({ message, mode })}
           />
-          <div className="px-4 pb-8 pt-2 sm:px-6">
+          <div className="px-3 pb-[max(2rem,env(safe-area-inset-bottom))] pt-0 md:px-6 md:pt-2">
             <ConversationAi key={selected.id} messageId={selected.id} />
             {composeState ? (
               <React.Suspense
@@ -177,7 +198,7 @@ export function MessageDetail({
                 />
               </React.Suspense>
             ) : (
-              <div className="grid grid-cols-2 gap-3 lg:flex">
+              <div className="hidden grid-cols-2 gap-3 md:grid lg:flex">
                 <Button
                   className="h-11 justify-center gap-2 px-5 lg:min-w-32"
                   size="lg"
@@ -202,6 +223,58 @@ export function MessageDetail({
             )}
           </div>
         </PullToRefresh>
+        <footer
+          data-reader-actions=""
+          className="flex shrink-0 items-center justify-around gap-1 border-t bg-background px-2 pb-[env(safe-area-inset-bottom)] pt-1 md:hidden"
+        >
+          <Button
+            className="min-h-11"
+            onClick={() => setComposeState({ message: replyTarget, mode: "reply" })}
+            variant="ghost"
+          >
+            <Reply />
+            Reply
+          </Button>
+          {activeFolder === "inbox" || activeFolder === "catchall" ? (
+            <IconButton label="Archive conversation" onClick={() => onAction("archive")}>
+              <Archive />
+            </IconButton>
+          ) : null}
+          {activeFolder === "trash" ? (
+            onDelete ? (
+              <IconButton
+                label="Delete conversation permanently"
+                onClick={() => setDeleteOpen(true)}
+              >
+                <Trash2 />
+              </IconButton>
+            ) : null
+          ) : (
+            <IconButton label="Move conversation to Trash" onClick={() => onAction("trash")}>
+              <Trash2 />
+            </IconButton>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button aria-label="More conversation actions" size="icon" variant="ghost">
+                <MoreHorizontal />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" side="top">
+              <DropdownMenuItem onSelect={() => onAction(isUnread ? "read" : "unread")}>
+                {isUnread ? "Mark read" : "Mark unread"}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onAction(isStarred ? "unstar" : "star")}>
+                {isStarred ? "Unstar" : "Star"}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => setComposeState({ message: selected, mode: "forward" })}
+              >
+                Forward
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </footer>
       </article>
       {onDelete ? (
         <DeleteConversationDialog
@@ -215,14 +288,22 @@ export function MessageDetail({
 }
 
 function MessageReaderStatus({
+  onBack,
   description,
   label
 }: {
   description?: string;
+  onBack?: () => void;
   label: string;
 }): React.ReactElement {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-muted-foreground">
+      {onBack ? (
+        <Button variant="outline" onClick={onBack}>
+          <ArrowLeft />
+          Back to messages
+        </Button>
+      ) : null}
       <div className="flex size-9 items-center justify-center rounded-md border bg-card">
         <MailOpen className="size-4" />
       </div>

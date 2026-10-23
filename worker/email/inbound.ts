@@ -13,6 +13,9 @@ export async function handleInboundEmail(
     envelopeRecipient: event.envelopeRecipient,
     raw: event.raw,
     parsed,
-    ...(event.providerMessageKey ? { dedupeKey: event.providerMessageKey } : {})
+    ...(event.providerMessageKey ? { dedupeKey: event.providerMessageKey } : {}),
+    ...(event.sourceProviderConnectionId
+      ? { sourceProviderConnectionId: event.sourceProviderConnectionId }
+      : {})
   });
 }

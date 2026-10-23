@@ -1,8 +1,7 @@
-import { RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,52 +12,66 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
-} from "@/components/ui/table";
+
 import { SettingsSection } from "@/features/settings/settings-section";
 import {
   deleteProviderConnection,
   listProviderConnections,
+  listProviderImportPurges,
   syncProviderConnection,
+  updateProviderImportScope,
   verifyProviderConnection
 } from "./api";
+import { ConnectionCredentialsDialog } from "./connection-credentials-dialog";
 import { ProviderConnectionDialog } from "./connection-dialog";
-import type { ProviderConnection } from "./types";
+import { PurgeProgress } from "./connection-safety-progress";
+import { ConnectionTable, type PendingAction } from "./connection-table";
+import type { ProviderConnection, ProviderImportPurge } from "./types";
 
-type PendingAction = { providerId: string; action: "verify" | "sync" | "remove" } | null;
-
-export function ProviderConnectionSettings(): React.ReactElement {
+export function ProviderConnectionSettings({
+  onMailboxesChanged
+}: {
+  onMailboxesChanged: () => void;
+}): React.ReactElement {
   const [connections, setConnections] = React.useState<ProviderConnection[]>([]);
+  const [purges, setPurges] = React.useState<ProviderImportPurge[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState<PendingAction>(null);
+  const [verificationErrors, setVerificationErrors] = React.useState<Record<string, string>>({});
+  const [credentialTarget, setCredentialTarget] = React.useState<ProviderConnection | null>(null);
   const [removeTarget, setRemoveTarget] = React.useState<ProviderConnection | null>(null);
-
-  const load = React.useCallback(async () => {
-    setLoading(true);
+  const [scopeTarget, setScopeTarget] = React.useState<ProviderConnection | null>(null);
+  const [scopeDate, setScopeDate] = React.useState("");
+  const load = React.useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     setLoadError(null);
     try {
-      setConnections(await listProviderConnections());
+      const [nextConnections, nextPurges] = await Promise.all([
+        listProviderConnections(),
+        listProviderImportPurges()
+      ]);
+      setConnections(nextConnections);
+      setPurges(nextPurges);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "Connections could not be loaded.");
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, []);
 
   React.useEffect(() => {
     void load();
   }, [load]);
-
+  React.useEffect(() => {
+    const timer = window.setInterval(() => void load(false), 15_000);
+    return () => window.clearInterval(timer);
+  }, [load]);
   async function verify(connection: ProviderConnection) {
     setPending({ providerId: connection.providerId, action: "verify" });
+    setVerificationErrors((current) => ({ ...current, [connection.providerId]: "" }));
     try {
       const result = await verifyProviderConnection(connection.providerId);
       if (result.imap && result.smtp) {
@@ -74,6 +87,7 @@ export function ProviderConnectionSettings(): React.ReactElement {
               : candidate
           )
         );
+        onMailboxesChanged();
         toast.success(
           result.syncQueued
             ? `${result.mailboxAddress} is ready and its Inbox sync was queued.`
@@ -81,12 +95,14 @@ export function ProviderConnectionSettings(): React.ReactElement {
         );
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Connection verification failed.");
+      const message = error instanceof Error ? error.message : "Connection verification failed.";
+      setVerificationErrors((current) => ({ ...current, [connection.providerId]: message }));
+      toast.error(message);
+      await load(false);
     } finally {
       setPending(null);
     }
   }
-
   async function sync(connection: ProviderConnection) {
     setPending({ providerId: connection.providerId, action: "sync" });
     try {
@@ -98,16 +114,46 @@ export function ProviderConnectionSettings(): React.ReactElement {
       setPending(null);
     }
   }
-
-  async function remove(connection: ProviderConnection) {
+  function openScope(connection: ProviderConnection) {
+    setScopeTarget(connection);
+    setScopeDate(connection.config.importSince ?? "");
+  }
+  async function saveScope() {
+    if (!scopeTarget) return;
+    setPending({ providerId: scopeTarget.providerId, action: "scope" });
+    try {
+      const updated = await updateProviderImportScope(scopeTarget.providerId, scopeDate || null);
+      setConnections((current) =>
+        current.map((connection) =>
+          connection.providerId === updated.providerId ? updated : connection
+        )
+      );
+      setScopeTarget(null);
+      toast.success(
+        scopeDate
+          ? `Inbox history will be imported from ${scopeDate}. Backfill was restarted safely.`
+          : "All Inbox history will be imported. Backfill was restarted safely."
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Import scope could not be updated.");
+    } finally {
+      setPending(null);
+    }
+  }
+  async function remove(connection: ProviderConnection, eraseImported: boolean) {
     setPending({ providerId: connection.providerId, action: "remove" });
     try {
-      await deleteProviderConnection(connection.providerId);
+      const purge = await deleteProviderConnection(connection.providerId, eraseImported);
       setConnections((current) =>
         current.filter((candidate) => candidate.providerId !== connection.providerId)
       );
+      if (purge) setPurges((current) => [purge, ...current]);
       setRemoveTarget(null);
-      toast.success(`${connection.displayName} was removed. You can reconnect the mailbox.`);
+      toast.success(
+        purge
+          ? `${connection.displayName} was disconnected. Erasure of ${purge.totalMessages.toLocaleString()} imported messages was queued.`
+          : `${connection.displayName} was disconnected. Imported messages were kept.`
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "The connection could not be removed.");
     } finally {
@@ -119,13 +165,15 @@ export function ProviderConnectionSettings(): React.ReactElement {
     <SettingsSection
       action={
         <ProviderConnectionDialog
-          onCreated={(connection) =>
+          onCreated={(connection) => {
             setConnections((current) =>
               [...current, connection].sort((left, right) =>
                 left.createdAt.localeCompare(right.createdAt)
               )
-            )
-          }
+            );
+            if (connection.verifiedAt) onMailboxesChanged();
+            else void load(false);
+          }}
         />
       }
       description="Bring an existing mailbox into Sovereign Mail without changing its MX records"
@@ -137,129 +185,86 @@ export function ProviderConnectionSettings(): React.ReactElement {
           <AlertDescription>{loadError}</AlertDescription>
         </Alert>
       ) : null}
-      <Table containerClassName="rounded-lg border">
-        <TableHeader className="bg-muted/40">
-          <TableRow className="hover:bg-transparent">
-            <TableHead>Mailbox provider</TableHead>
-            <TableHead className="hidden lg:table-cell">Incoming</TableHead>
-            <TableHead className="hidden lg:table-cell">Outgoing</TableHead>
-            <TableHead className="w-24">Status</TableHead>
-            <TableHead className="w-px text-right">
-              <span className="sr-only">Actions</span>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {loading ? (
-            <TableRow>
-              <TableCell className="h-24 text-center text-muted-foreground" colSpan={5}>
-                <span className="inline-flex items-center gap-2">
-                  <Spinner /> Loading connections…
-                </span>
-              </TableCell>
-            </TableRow>
-          ) : null}
-          {!loading && connections.length === 0 ? (
-            <TableRow>
-              <TableCell className="h-24 text-center text-muted-foreground" colSpan={5}>
-                No provider mailboxes connected.
-              </TableCell>
-            </TableRow>
-          ) : null}
-          {connections.map((connection) => {
-            const verifying =
-              pending?.providerId === connection.providerId && pending.action === "verify";
-            const syncing =
-              pending?.providerId === connection.providerId && pending.action === "sync";
-            return (
-              <TableRow key={connection.id}>
-                <TableCell>
-                  <span className="block font-medium">{connection.displayName}</span>
-                  <span className="mt-1 block font-mono text-xs text-muted-foreground">
-                    {connection.mailboxAddress ?? connection.providerId}
-                  </span>
-                  <span className="mt-1 block text-xs text-muted-foreground lg:hidden">
-                    IMAP {connection.config.imapHost}:{connection.config.imapPort} · SMTP{" "}
-                    {connection.config.smtpHost}:{connection.config.smtpPort}
-                  </span>
-                </TableCell>
-                <TableCell className="hidden font-mono text-xs lg:table-cell">
-                  {connection.config.imapHost}:{connection.config.imapPort}
-                </TableCell>
-                <TableCell className="hidden font-mono text-xs lg:table-cell">
-                  {connection.config.smtpHost}:{connection.config.smtpPort}
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    variant={
-                      connection.isEnabled && connection.verifiedAt ? "secondary" : "outline"
-                    }
-                  >
-                    {!connection.isEnabled
-                      ? "Disabled"
-                      : connection.verifiedAt
-                        ? connection.lastErrorCode
-                          ? "Needs attention"
-                          : "Ready"
-                        : "Verify"}
-                  </Badge>
-                  {connection.lastSyncedAt ? (
-                    <span className="mt-1 block text-xs text-muted-foreground">
-                      Synced {new Date(connection.lastSyncedAt).toLocaleString()}
-                    </span>
-                  ) : null}
-                </TableCell>
-                <TableCell>
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      disabled={pending !== null}
-                      onClick={() => void verify(connection)}
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      {verifying ? <Spinner /> : <ShieldCheck />}
-                      {verifying ? "Verifying…" : "Verify"}
-                    </Button>
-                    <Button
-                      disabled={pending !== null || !connection.verifiedAt}
-                      onClick={() => void sync(connection)}
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      {syncing ? <Spinner /> : <RefreshCw />}
-                      {syncing ? "Queuing…" : "Sync"}
-                    </Button>
-                    <Button
-                      aria-label={`Remove ${connection.displayName}`}
-                      disabled={pending !== null}
-                      onClick={() => setRemoveTarget(connection)}
-                      size="icon"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <Trash2 />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+      <ConnectionTable
+        connections={connections}
+        loading={loading}
+        pending={pending}
+        verificationErrors={verificationErrors}
+        verify={verify}
+        sync={sync}
+        openScope={openScope}
+        onUpdatePassword={setCredentialTarget}
+        onRemove={setRemoveTarget}
+      />
       <p className="text-xs leading-5 text-muted-foreground">
         Verify checks IMAP and SMTP authentication without sending a message. Ready connections use
         their provider for outgoing mail and synchronize a bounded Inbox batch every five minutes.
         Other folders and changes made outside Sovereign Mail are not synchronized yet.
       </p>
-      <Dialog open={removeTarget !== null} onOpenChange={(open) => !open && setRemoveTarget(null)}>
+      {purges.length > 0 ? <PurgeProgress purges={purges} /> : null}
+      {credentialTarget ? (
+        <ConnectionCredentialsDialog
+          connection={credentialTarget}
+          key={credentialTarget.id}
+          onClose={() => setCredentialTarget(null)}
+          onSaved={(updated) => {
+            setConnections((current) =>
+              current.map((connection) => (connection.id === updated.id ? updated : connection))
+            );
+            setCredentialTarget(null);
+            void verify(updated);
+          }}
+        />
+      ) : null}
+      <Dialog
+        open={scopeTarget !== null}
+        onOpenChange={(open) => !open && pending === null && setScopeTarget(null)}
+      >
         <DialogContent className="w-[min(92vw,480px)]">
           <DialogHeader>
-            <DialogTitle>Remove provider connection?</DialogTitle>
+            <DialogTitle>Choose Inbox history</DialogTitle>
             <DialogDescription>
-              This deletes the stored credential and sync cursor for {removeTarget?.mailboxAddress}.
-              Imported messages and the Sovereign Mail mailbox stay in place.
+              The cutoff uses the provider’s received date. Changing it restarts the bounded
+              backfill without duplicating mail. Narrowing the date does not erase mail already
+              imported.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-medium" htmlFor="provider-scope-date">
+              Oldest Inbox date to import
+            </label>
+            <Input
+              id="provider-scope-date"
+              max={new Date().toISOString().slice(0, 10)}
+              type="date"
+              value={scopeDate}
+              onChange={(event) => setScopeDate(event.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Clear the date to import all available Inbox history.
+            </p>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button disabled={pending !== null} type="button" variant="outline">
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button disabled={pending !== null} onClick={() => void saveScope()} type="button">
+              {pending?.action === "scope" ? <Spinner /> : null}
+              Save and restart backfill
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={removeTarget !== null} onOpenChange={(open) => !open && setRemoveTarget(null)}>
+        <DialogContent className="w-[min(92vw,520px)]">
+          <DialogHeader>
+            <DialogTitle>Disconnect provider?</DialogTitle>
+            <DialogDescription>
+              Disconnecting always deletes the stored credential and sync state for{" "}
+              {removeTarget?.mailboxAddress}. Choose whether its imported messages should remain in
+              Sovereign Mail. Neither option changes the provider’s copy.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -270,12 +275,20 @@ export function ProviderConnectionSettings(): React.ReactElement {
             </DialogClose>
             <Button
               disabled={pending !== null || !removeTarget}
-              onClick={() => removeTarget && void remove(removeTarget)}
+              onClick={() => removeTarget && void remove(removeTarget, false)}
+              type="button"
+              variant="outline"
+            >
+              Disconnect only
+            </Button>
+            <Button
+              disabled={pending !== null || !removeTarget}
+              onClick={() => removeTarget && void remove(removeTarget, true)}
               type="button"
               variant="destructive"
             >
               {pending?.action === "remove" ? <Spinner /> : <Trash2 />}
-              {pending?.action === "remove" ? "Removing…" : "Remove connection"}
+              {pending?.action === "remove" ? "Disconnecting…" : "Disconnect and erase"}
             </Button>
           </DialogFooter>
         </DialogContent>

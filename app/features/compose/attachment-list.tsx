@@ -13,15 +13,15 @@ export function AttachmentList({
     <div className="flex flex-wrap gap-2 border-t px-5 py-3">
       {attachments.map((item) => (
         <div
-          className="flex items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-xs"
+          className="flex min-w-0 max-w-full items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-xs"
           key={item.id}
         >
           <Paperclip />
-          <span className="max-w-48 truncate">{item.filename}</span>
-          <span className="text-muted-foreground">{formatBytes(item.sizeBytes)}</span>
+          <span className="min-w-0 max-w-48 flex-1 truncate">{item.filename}</span>
+          <span className="shrink-0 text-muted-foreground">{formatBytes(item.sizeBytes)}</span>
           <Button
             aria-label={`Remove ${item.filename}`}
-            className="size-6"
+            className="size-6 shrink-0"
             size="icon"
             type="button"
             variant="ghost"

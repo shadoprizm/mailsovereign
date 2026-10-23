@@ -5,7 +5,8 @@ import {
   deleteImapSmtpConnection,
   getSealedCredential,
   insertImapSmtpConnection,
-  listImapSmtpConnections
+  listImapSmtpConnections,
+  updateImapSmtpCredentials
 } from "@worker/providers/connections";
 import {
   importCredentialKey,
@@ -184,6 +185,58 @@ describe("imap-smtp connection repository against the real schema", () => {
     await expect(getSealedCredential(db, providerId("missing"))).rejects.toMatchObject({
       code: "PROVIDER_NOT_REGISTERED"
     });
+  });
+
+  it("replaces a Gmail password in place and preserves the sync cursor", async () => {
+    const sqlite = database();
+    sqlite.exec(readFileSync(resolve("migrations/0012_provider_sync_state.sql"), "utf8"));
+    sqlite.exec(readFileSync(resolve("migrations/0013_provider_sync_backfill.sql"), "utf8"));
+    const db = d1From(sqlite);
+    const key = await credentialKey();
+    const owner = providerId("google-primary");
+    const original = await insertImapSmtpConnection(db, key, {
+      providerId: owner,
+      displayName: "Gmail",
+      config: {
+        ...validConfig,
+        imapHost: "imap.gmail.com",
+        smtpHost: "smtp.gmail.com",
+        importSince: "2026-06-01"
+      },
+      credentials: new ProviderCredentials("person@gmail.com", "old-password")
+    });
+    sqlite
+      .prepare(
+        "UPDATE provider_connections SET verified_at = ?, last_synced_at = ?, last_error_code = ? WHERE provider_id = ?"
+      )
+      .run("2026-09-01", "2026-09-02", "IMAP_AUTH", owner);
+    sqlite
+      .prepare("INSERT INTO provider_sync_state VALUES (?, ?, 'INBOX', 12, 500, ?, ?, ?, 100)")
+      .run("cursor-1", owner, "2026-09-02", "2026-09-01", "2026-09-02");
+    const cursor = sqlite.prepare("SELECT * FROM provider_sync_state").get();
+
+    const updated = await updateImapSmtpCredentials(db, key, owner, "abcd efgh ijkl mnop");
+
+    expect(updated).toMatchObject({
+      id: original.id,
+      config: original.config,
+      mailboxAddress: "person@gmail.com",
+      createdAt: original.createdAt,
+      verifiedAt: null,
+      lastSyncedAt: "2026-09-02",
+      lastErrorCode: null
+    });
+    expect(sqlite.prepare("SELECT * FROM provider_sync_state").get()).toEqual(cursor);
+    const sealed = await getSealedCredential(db, owner);
+    const credentials = await unsealCredentials(key, sealed.ciphertext, sealed.boundTo);
+    expect(credentials.username()).toBe("person@gmail.com");
+    expect(credentials.password()).toBe("abcdefghijklmnop");
+    expect(JSON.stringify(updated)).not.toContain("abcdefghijklmnop");
+    expect((await listImapSmtpConnections(db))[0]).toEqual(updated);
+    await expect(updateImapSmtpCredentials(db, key, owner, "    ")).rejects.toMatchObject({
+      code: "PROVIDER_CONNECTION_INVALID"
+    });
+    expect((await getSealedCredential(db, owner)).ciphertext).toBe(sealed.ciphertext);
   });
 
   it("deletes the sealed credential so the same mailbox can be reconnected", async () => {

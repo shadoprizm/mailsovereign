@@ -99,3 +99,54 @@ index db4d06a4c2aa5b22ca0897b76f1392fef1d40fe9..913cb71f01529280286d1aa94d63551a
  const FLAG_KEYS = {
      answered: "ANSWERED",
      deleted: "DELETED",
+diff --git a/dist/utils/imapStream.js b/dist/utils/imapStream.js
+--- a/dist/utils/imapStream.js
++++ b/dist/utils/imapStream.js
+@@ -89,6 +89,35 @@
+         newBuf.set(result.value, this.buffer.length);
+         this.buffer = newBuf;
+     }
++    /** Reads a literal without repeatedly reallocating and copying its accumulated bytes. */
++    async readLiteral(n) {
++        if (this.buffer.length >= n) {
++            const literal = this.buffer.slice(0, n);
++            this.buffer = this.buffer.slice(n);
++            return literal;
++        }
++        const literal = new Uint8Array(n);
++        let offset = this.buffer.length;
++        literal.set(this.buffer);
++        this.buffer = new Uint8Array(0);
++        while (offset < n) {
++            const result = await this.readChunk();
++            if (result === "timeout") {
++                this.close();
++                throw new Error(`IMAP read timed out after ${this.timeoutMs}ms`);
++            }
++            if (result.done)
++                throw new Error("IMAP connection closed by server");
++            const remaining = n - offset;
++            const consumed = Math.min(remaining, result.value.length);
++            literal.set(result.value.subarray(0, consumed), offset);
++            offset += consumed;
++            if (consumed < result.value.length) {
++                this.buffer = result.value.slice(consumed);
++            }
++        }
++        return literal;
++    }
+     indexOfCRLF() {
+         for (let i = 0; i < this.buffer.length - 1; i++) {
+             if (this.buffer[i] === 13 && this.buffer[i + 1] === 10)
+@@ -132,10 +161,7 @@
+                     const n = parseInt(marker[1]);
+                     if (n === 0)
+                         return { line, literal: new Uint8Array(0) };
+-                    while (this.buffer.length < n)
+-                        await this.fillBuffer();
+-                    const literal = this.buffer.slice(0, n);
+-                    this.buffer = this.buffer.slice(n);
++                    const literal = await this.readLiteral(n);
+                     return { line, literal };
+                 }
+                 return { line, literal: null };

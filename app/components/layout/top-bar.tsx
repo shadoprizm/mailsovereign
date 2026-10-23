@@ -19,7 +19,7 @@ import { mailboxUnreadLabel } from "@/features/notifications/unread";
 import type { FolderId } from "@/lib/routes";
 import { MobileNavigation } from "./mobile-navigation";
 
-type TopBarProps = {
+export type TopBarProps = {
   activeFolder: FolderId;
   draftCount: number;
   user: CurrentUser;
@@ -53,7 +53,7 @@ export function TopBar({
   sidebarCollapsed = false
 }: TopBarProps): React.ReactElement {
   return (
-    <header className="flex h-14 w-full shrink-0 touch-none items-center gap-2 border-b bg-background px-3 md:px-4">
+    <header className="flex h-16 w-full shrink-0 touch-none items-center gap-3 border-b bg-background px-4 md:h-14 md:gap-2 md:px-4">
       {onToggleSidebar ? (
         <TooltipProvider delayDuration={250}>
           <Tooltip>
@@ -88,9 +88,9 @@ export function TopBar({
         onSignedOut={onSignedOut}
       />
       <div className="relative min-w-0 max-w-xl flex-1">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground md:left-2.5 md:size-3.5" />
         <Input
-          className="h-8 border-transparent bg-muted/70 pl-8 shadow-none focus-visible:border-input focus-visible:ring-1"
+          className="h-10 rounded-lg border-transparent bg-muted/70 pl-9 shadow-none focus-visible:border-input focus-visible:ring-1 md:h-8 md:rounded-md md:pl-8"
           placeholder={activeFolder === "contacts" ? "Search contacts" : "Search mail"}
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
@@ -119,7 +119,12 @@ export function TopBar({
             </SelectContent>
           </Select>
         ) : null}
-        <Button aria-label="New email" className="h-8 px-3" onClick={onCompose} type="button">
+        <Button
+          aria-label="New email"
+          className="size-10 rounded-lg p-0 sm:h-8 sm:w-auto sm:rounded-md sm:px-3"
+          onClick={onCompose}
+          type="button"
+        >
           <MailPlus />
           <span className="hidden sm:inline">Compose</span>
         </Button>

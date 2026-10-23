@@ -23,6 +23,7 @@ export const settingsTabs = [
   "users",
   "domains",
   "connections",
+  "applications",
   "notifications",
   "updates",
   "ai",

@@ -5,6 +5,7 @@ import { AccountSettings } from "@/features/account/account-settings";
 import { AiSettings } from "@/features/billing/ai-settings";
 import { DomainSettings } from "@/features/domains/domain-settings";
 import { MailboxSettings } from "@/features/mailboxes/mailbox-settings";
+import { NativeMailSettings } from "@/features/mailboxes/native-mail-settings";
 import type { Mailbox } from "@/features/mailboxes/types";
 import { NotificationSettings } from "@/features/notifications/notification-settings";
 import type { NotificationController } from "@/features/notifications/types";
@@ -19,6 +20,12 @@ import type { WorkspaceUser } from "@/features/users/types";
 import { UserSettings } from "@/features/users/user-settings";
 import { sovereignProductConfig } from "@/lib/product-config";
 import { appRoutePath, isSettingsTabId, type SettingsTabId } from "@/lib/routes";
+
+const ApplicationSettings = React.lazy(() =>
+  import("@/features/transactional/application-settings").then((module) => ({
+    default: module.ApplicationSettings
+  }))
+);
 
 const SignatureSettings = React.lazy(() =>
   import("@/features/signatures/signature-settings").then((module) => ({
@@ -61,25 +68,62 @@ export function SettingsPage({
   updateProgress,
   updateStatus
 }: SettingsPageProps): React.ReactElement {
+  const categories: Array<[SettingsTabId, string]> = [
+    ["mailboxes", "Mailboxes"],
+    ["signatures", "Signatures"],
+    ["users", "Users"],
+    ...(canManage
+      ? ([
+          ["domains", "Domains"],
+          ["connections", "Connections"],
+          ["applications", "Applications"]
+        ] as Array<[SettingsTabId, string]>)
+      : []),
+    ["notifications", "Notifications"],
+    ...(canManage && sovereignProductConfig.releaseUpdatesEnabled
+      ? ([["updates", "Updates"]] as Array<[SettingsTabId, string]>)
+      : []),
+    ["ai", "AI"],
+    ["account", "Account"],
+    ["debug", "Debug"]
+  ];
   return (
     <div className="h-full overflow-auto">
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-        <div className="mb-7">
+        <div className="hidden mb-7 px-1 sm:px-0 md:block">
           <h1 className="text-xl font-medium tracking-tight">Settings</h1>
           <p className="mt-1 text-xs text-muted-foreground">Workspace and access</p>
         </div>
+        <label className="mb-4 grid gap-2 text-sm md:hidden" htmlFor="settings-category">
+          Settings category
+          <select
+            className="min-h-11 w-full rounded-lg border bg-card px-3 text-base"
+            id="settings-category"
+            value={activeTab}
+            onChange={(event) => {
+              if (isSettingsTabId(event.target.value)) onTabChange(event.target.value);
+            }}
+          >
+            {categories.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
         <Tabs
           value={activeTab}
           onValueChange={(value) => {
             if (isSettingsTabId(value)) onTabChange(value);
           }}
         >
-          <TabsList className="h-auto w-full flex-wrap justify-start gap-x-1 rounded-none border-b bg-transparent p-0">
+          <TabsList className="hidden h-auto w-full md:flex flex-nowrap justify-start gap-x-1 overflow-x-auto rounded-none border-b bg-transparent p-0 sm:flex-wrap sm:overflow-visible">
             <SettingsTab value="mailboxes">Mailboxes</SettingsTab>
             <SettingsTab value="signatures">Signatures</SettingsTab>
             <SettingsTab value="users">Users</SettingsTab>
             {canManage ? <SettingsTab value="domains">Domains</SettingsTab> : null}
             {canManage ? <SettingsTab value="connections">Connections</SettingsTab> : null}
+            {canManage ? <SettingsTab value="applications">Applications</SettingsTab> : null}
             <SettingsTab value="notifications">Notifications</SettingsTab>
             {canManage && sovereignProductConfig.releaseUpdatesEnabled ? (
               <SettingsTab value="updates">Updates</SettingsTab>
@@ -97,6 +141,7 @@ export function SettingsPage({
               onDefaultFromMailboxChange={onDefaultFromMailboxChange}
               onChanged={onRefresh}
             />
+            <NativeMailSettings mailboxes={mailboxes} />
           </TabsContent>
           <TabsContent className="mt-5" value="signatures">
             <React.Suspense
@@ -123,7 +168,14 @@ export function SettingsPage({
           ) : null}
           {canManage ? (
             <TabsContent className="mt-5" value="connections">
-              <ProviderConnectionSettings />
+              <ProviderConnectionSettings onMailboxesChanged={onRefresh} />
+            </TabsContent>
+          ) : null}
+          {canManage ? (
+            <TabsContent className="mt-5" value="applications">
+              <React.Suspense fallback={<p className="text-sm">Loading applications…</p>}>
+                <ApplicationSettings />
+              </React.Suspense>
             </TabsContent>
           ) : null}
           <TabsContent className="mt-5" value="notifications">
@@ -164,7 +216,7 @@ function SettingsTab({
   return (
     <TabsTrigger
       asChild
-      className="rounded-none border-b border-transparent px-3 py-2 text-xs font-normal text-muted-foreground data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+      className="shrink-0 whitespace-nowrap rounded-none border-b border-transparent px-3 py-2 text-xs font-normal text-muted-foreground data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
       value={value}
     >
       <a

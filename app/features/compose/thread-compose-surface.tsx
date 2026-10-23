@@ -1,7 +1,7 @@
 import { ArrowLeft, Send, X } from "lucide-react";
 import * as React from "react";
-
 import { Button } from "@/components/ui/button";
+import { useComposeFocus } from "@/hooks/use-compose-focus";
 
 type ThreadComposeSurfaceProps = {
   children: React.ReactNode;
@@ -21,6 +21,7 @@ export function ThreadComposeSurface({
   onClose
 }: ThreadComposeSurfaceProps): React.ReactElement {
   const surfaceRef = React.useRef<HTMLElement>(null);
+  const compact = useComposeFocus(surfaceRef);
   const previousFocusRef = React.useRef<HTMLElement | null>(null);
   const titleId = React.useId();
   const statusId = React.useId();
@@ -40,8 +41,11 @@ export function ThreadComposeSurface({
 
   return (
     <section
+      role="dialog"
+      aria-modal={compact}
       aria-describedby={statusId}
       aria-labelledby={titleId}
+      data-compose-surface=""
       className="fixed inset-0 z-50 flex h-[100dvh] flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)] outline-none lg:static lg:z-auto lg:mt-6 lg:h-auto lg:rounded-lg lg:border lg:bg-card lg:pt-0 lg:shadow-sm"
       ref={surfaceRef}
       tabIndex={-1}

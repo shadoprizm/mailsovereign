@@ -59,6 +59,16 @@ After deployment, run:
 pnpm sovereign-mail:doctor -- --name production
 ```
 
+Terminal updates use the generated deployment configuration and the signed stable release:
+
+```sh
+pnpm deploy -- --config .sovereign-mail/deployments/production/wrangler.jsonc
+```
+
+To enable the **Install update** action inside Sovereign Mail, configure the constrained Workers
+Builds release runner described in [UPDATES.md](UPDATES.md#in-app-update-runner). A generic Git
+deployment is not an update runner and must not be connected to the production Worker.
+
 Open the canonical HTTPS application URL. The first user becomes the owner only through the
 documented setup flow; do not expose a seeded development database publicly.
 
@@ -82,3 +92,11 @@ objects separately before destructive operations. See [RECOVERY.md](RECOVERY.md)
 Reset and destroy commands are constrained to resources recorded in the selected deployment
 manifest. Never copy a production manifest into a different Cloudflare account or edit resource
 identifiers without verifying ownership.
+
+## Customer AI provider
+
+After installation, the owner can configure **Settings → AI → Use your own API key**.
+This uses the existing `PROVIDER_CREDENTIAL_KEY` encryption secret; no additional
+Worker binding is needed. Configure a public HTTPS OpenAI-compatible API base URL
+and exact model IDs. See [AI providers](AI_PROVIDERS.md) for access, billing, and
+connection-testing behavior.

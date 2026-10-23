@@ -19,6 +19,38 @@ describe("Sovereign Mail job envelope", () => {
     ).toBe(true);
     expect(
       isJob({
+        id: "purge_1",
+        kind: "provider-purge",
+        purgeId: "ppurge_1234-abcd",
+        requestedAt: "2026-08-16T12:00:00.000Z"
+      })
+    ).toBe(true);
+    expect(
+      isJob({
+        id: "purge_1",
+        kind: "provider-purge",
+        purgeId: "../mail",
+        requestedAt: "2026-08-16T12:00:00.000Z"
+      })
+    ).toBe(false);
+    expect(
+      isJob({
+        id: "orgjob_1",
+        kind: "organization-bulk",
+        runId: "orgbulk_1234-abcd",
+        requestedAt: "2026-08-16T12:00:00.000Z"
+      })
+    ).toBe(true);
+    expect(
+      isJob({
+        id: "orgjob_1",
+        kind: "organization-bulk",
+        runId: "../mail",
+        requestedAt: "2026-08-16T12:00:00.000Z"
+      })
+    ).toBe(false);
+    expect(
+      isJob({
         id: "sync_1",
         kind: "provider-sync",
         providerId: "INVALID PROVIDER",

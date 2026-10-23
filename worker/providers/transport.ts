@@ -18,6 +18,9 @@ export type OutboundEmail = {
   readonly to: OutboundRecipients;
   readonly cc?: OutboundRecipients;
   readonly bcc?: OutboundRecipients;
+  readonly recipientNames?: Readonly<Record<string, string>>;
+  readonly replyTo?: OutboundAddress;
+  readonly messageId?: string;
   readonly subject: string;
   readonly text: string;
   readonly html?: string;

@@ -37,36 +37,51 @@ const config = {
 function environment(options: { connectionRow?: boolean } = {}) {
   const run = vi.fn().mockResolvedValue({ success: true, meta: { changes: 1 } });
   const all = vi.fn().mockResolvedValue({ results: [] });
-  const first = vi.fn().mockImplementation(async () =>
-    options.connectionRow
-      ? {
-          id: "conn-1",
-          provider_id: "mxroute-primary",
-          kind: "imap-smtp",
-          display_name: "MXRoute primary",
-          mailbox_address: "ops@example.com",
-          config_json: JSON.stringify(config),
-          credential_key_version: 1,
-          is_enabled: 1,
-          verified_at: timestamp,
-          last_synced_at: null,
-          last_error_code: null,
-          created_at: timestamp,
-          updated_at: timestamp
-        }
-      : null
-  );
-  const bind = vi.fn(() => ({ run, all, first }));
-  const prepare = vi.fn(() => ({ bind, run, all, first }));
+  const first = vi.fn().mockImplementation(async (sql?: string) => {
+    if (!options.connectionRow) return null;
+    if (sql?.includes("provider_sync_state")) return null;
+    if (sql?.includes("source_provider_connection_id")) return { count: 4 };
+    if (sql?.includes("provider_sync_quarantine")) return { count: 0 };
+    return {
+      id: "conn-1",
+      provider_id: "mxroute-primary",
+      kind: "imap-smtp",
+      display_name: "MXRoute primary",
+      mailbox_address: "ops@example.com",
+      config_json: JSON.stringify(config),
+      credential_key_version: 1,
+      is_enabled: 1,
+      verified_at: timestamp,
+      last_synced_at: null,
+      last_error_code: null,
+      created_at: timestamp,
+      updated_at: timestamp
+    };
+  });
+  const bind = vi.fn();
+  const prepare = vi.fn((sql: string) => {
+    const boundFirst = () => first(sql);
+    return {
+      bind: (...args: unknown[]) => {
+        bind(...args);
+        return { run, all, first: boundFirst };
+      },
+      run,
+      all,
+      first: boundFirst
+    };
+  });
+  const batch = vi.fn().mockResolvedValue([]);
   const send = vi.fn().mockResolvedValue(undefined);
   const secret = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))));
   return {
     env: {
-      DB: { prepare } as unknown as D1Database,
+      DB: { prepare, batch } as unknown as D1Database,
       SOVEREIGN_MAIL_JOBS: { send } as unknown as Queue,
       PROVIDER_CREDENTIAL_KEY: secret
     },
     bind,
+    batch,
     prepare,
     send
   };
@@ -184,6 +199,104 @@ describe("provider connection operator routes", () => {
     expect(recordAudit).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ action: "provider_connection.delete", outcome: "success" })
+    );
+  });
+
+  it("updates the history cutoff and resets sync state", async () => {
+    const { env, batch } = environment({ connectionRow: true });
+    const response = await app.request(
+      "https://app.example.com/mxroute-primary/import-scope",
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ importSince: "2026-08-01" })
+      },
+      env as never
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      config: { importSince: "2026-08-01" },
+      syncProgress: { phase: "not_started" }
+    });
+    expect(batch).toHaveBeenCalledOnce();
+    expect(recordAudit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ action: "provider_connection.import_scope.update" })
+    );
+  });
+
+  it("replaces only the sealed credential and audits no secret material", async () => {
+    const { env, bind, batch, send } = environment({ connectionRow: true });
+    const response = await app.request(
+      "https://app.example.com/mxroute-primary/credentials",
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "replacement-test-password" })
+      },
+      env as never
+    );
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(JSON.parse(body)).toMatchObject({ id: "conn-1", verifiedAt: null, lastErrorCode: null });
+    expect(body).not.toContain("replacement-test-password");
+    expect(body).not.toContain("v1:");
+    expect(JSON.stringify(bind.mock.calls)).not.toContain("replacement-test-password");
+    expect(requireRole).toHaveBeenCalledWith(expect.anything(), ["owner", "admin"]);
+    expect(requireRecentSessionForEnvironment).toHaveBeenCalledOnce();
+    expect(batch).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+    expect(recordAudit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        action: "provider_connection.credentials.update",
+        resourceId: "conn-1"
+      })
+    );
+    expect(JSON.stringify(recordAudit.mock.calls)).not.toContain("replacement-test-password");
+  });
+
+  it("rejects password replacement before any DB access when recent authentication fails", async () => {
+    const { env, prepare } = environment({ connectionRow: true });
+    requireRecentSessionForEnvironment.mockImplementationOnce(() => {
+      throw new AppError("RECENT_AUTH_REQUIRED", "Sign in again.", 403);
+    });
+    const response = await app.request(
+      "https://app.example.com/mxroute-primary/credentials",
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: "replacement-test-password" })
+      },
+      env as never
+    );
+    expect(response.status).toBe(403);
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it("disconnects immediately and queues resumable imported-mail erasure", async () => {
+    const { env, send, batch } = environment({ connectionRow: true });
+    const response = await app.request(
+      "https://app.example.com/mxroute-primary?eraseImported=true",
+      { method: "DELETE" },
+      env as never
+    );
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({
+      mailboxAddress: "ops@example.com",
+      status: "pending",
+      totalMessages: 4
+    });
+    expect(batch).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "provider-purge", purgeId: expect.any(String) }),
+      { delaySeconds: 60 }
+    );
+    expect(recordAudit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ action: "provider_connection.purge.request" })
     );
   });
 

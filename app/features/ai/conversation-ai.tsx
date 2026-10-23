@@ -50,7 +50,10 @@ export function ConversationAi({ messageId }: { messageId: string }): React.Reac
   }
 
   return (
-    <section className="mb-4 rounded-lg border bg-card p-4" aria-label="Sovereign AI">
+    <section
+      className="mb-4 rounded-xl border bg-card p-4 shadow-sm md:rounded-lg md:shadow-none"
+      aria-label="Sovereign AI"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="flex items-center gap-2 text-sm font-medium">
@@ -95,7 +98,7 @@ export function ConversationAi({ messageId }: { messageId: string }): React.Reac
         <p className="mt-4 text-sm text-destructive">
           {error}{" "}
           <a className="underline" href="/settings/ai">
-            View AI plans
+            AI settings
           </a>
         </p>
       ) : null}
@@ -104,8 +107,9 @@ export function ConversationAi({ messageId }: { messageId: string }): React.Reac
         <div className="mt-4 rounded-md bg-muted/40 p-3">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
-              {result.creditsCharged} credit{result.creditsCharged === 1 ? "" : "s"} used ·{" "}
-              {result.creditsRemaining.toLocaleString()} remaining
+              {result.creditsCharged === 0
+                ? "Your AI provider · no Sovereign credits used"
+                : `${result.creditsCharged} credits used · ${result.creditsRemaining.toLocaleString()} remaining`}
             </p>
             <Button size="sm" type="button" variant="ghost" onClick={() => void copyResult()}>
               {copied ? <Check /> : <Clipboard />}

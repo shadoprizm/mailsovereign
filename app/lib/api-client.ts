@@ -44,10 +44,16 @@ export async function apiDelete<T = void>(path: string, body?: unknown): Promise
 }
 
 async function apiRequest<T>(path: string, init: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    credentials: "include",
-    ...init
-  });
+  let response: Response;
+  try {
+    response = await fetch(path, { credentials: "include", ...init });
+    if (typeof window !== "undefined")
+      window.dispatchEvent(new CustomEvent("sovereign-mail:connection", { detail: true }));
+  } catch {
+    if (typeof window !== "undefined")
+      window.dispatchEvent(new CustomEvent("sovereign-mail:connection", { detail: false }));
+    throw new Error("Connection unavailable. Check your connection and try again.");
+  }
 
   const data = (await readResponseJson(response)) as T | ApiError;
   if (!response.ok) {

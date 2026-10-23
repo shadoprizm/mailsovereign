@@ -16,7 +16,14 @@ const maxMessageBytes = 25 * 1024 * 1024;
 
 type ImapRuntime = Pick<
   CFImap,
-  "close" | "connect" | "examine" | "fetchEmails" | "fetchRawMessage" | "getFolders" | "status"
+  | "close"
+  | "connect"
+  | "examine"
+  | "fetchEmails"
+  | "fetchRawMessage"
+  | "getFolders"
+  | "searchEmails"
+  | "status"
 >;
 
 export type CloudflareImapRuntimeFactory = (options: Options) => ImapRuntime;
@@ -88,6 +95,26 @@ export function createCloudflareImapClient(
       await ensureConnected();
       await selectReadOnly(path);
       return protocolCall(async () => {
+        if (options.since) {
+          const since = parseImportSince(options.since);
+          const uids = await runtime.searchEmails({
+            since,
+            uid: `${options.fromUid}:${options.toUid}`,
+            useUid: true
+          });
+          if (uids.length > options.maxEntries) throw new ImapClientError("malformed");
+          const unique = new Set<number>();
+          for (const uid of uids) {
+            requireUid(uid);
+            if (uid < options.fromUid || uid > options.toUid || unique.has(uid)) {
+              throw new ImapClientError("malformed");
+            }
+            unique.add(uid);
+          }
+          return [...unique]
+            .sort((left, right) => left - right)
+            .map((uid) => ({ uid, seen: false }));
+        }
         const messages = await runtime.fetchEmails({
           limit: [options.fromUid, options.toUid],
           fetchBody: false,
@@ -146,9 +173,6 @@ export function createCloudflareImapClient(
         }
         if (message.size > options.maxBytes || message.raw.byteLength > options.maxBytes) {
           throw new ImapClientError("message_too_large");
-        }
-        if (message.raw.byteLength !== message.size) {
-          throw new ImapClientError("malformed", "raw_length_mismatch");
         }
         return copyArrayBuffer(message.raw);
       });
@@ -271,6 +295,15 @@ function toUid(value: number | undefined): number {
 
 function requirePositive(value: number): void {
   if (!Number.isInteger(value) || value < 1) throw new ImapClientError("malformed");
+}
+
+function parseImportSince(value: string): Date {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new ImapClientError("malformed");
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+    throw new ImapClientError("malformed");
+  }
+  return parsed;
 }
 
 function requireUidRange(fromUid: number, toUid: number, maxEntries: number): void {

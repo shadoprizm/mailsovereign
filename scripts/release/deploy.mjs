@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
@@ -42,8 +42,11 @@ export {
 
 export async function deploy(options = {}) {
   const configFile = resolve(options.configFile ?? resolve(root, "wrangler.jsonc"));
-  if (process.env.SOVEREIGN_MAIL_FORCE_SOURCE_DEPLOY === "1") return sourceDeploy(root);
+  if (process.env.SOVEREIGN_MAIL_FORCE_SOURCE_DEPLOY === "1") {
+    return sourceDeploy(root, configFile);
+  }
   const { bytes, manifest } = await loadVerifiedRelease({
+    allowPublishedReleaseBehindCheckout: options.allowPublishedReleaseBehindCheckout,
     artifactFile: options.artifactFile ?? process.env.SOVEREIGN_MAIL_RELEASE_ARTIFACT_FILE,
     expectedVersion: options.expectedVersion ?? process.env.SOVEREIGN_MAIL_EXPECTED_RELEASE_VERSION,
     fetcher: options.fetcher,
@@ -167,27 +170,34 @@ export async function deploy(options = {}) {
   }
 }
 
-function sourceDeploy(cwd) {
+function sourceDeploy(cwd, configFile) {
+  const sourceVersion = JSON.parse(readFileSync(resolve(cwd, "package.json"), "utf8")).version;
+  const sourceSchemaVersion = Math.max(
+    ...readdirSync(resolve(cwd, "migrations"))
+      .map((name) => /^(\d+)_.*\.sql$/.exec(name)?.[1])
+      .filter(Boolean)
+      .map(Number)
+  );
+  const config = JSON.parse(readFileSync(configFile, "utf8"));
   run("pnpm", ["build"], cwd);
-  run("pnpm", ["db:migrate:remote"], cwd);
-  deploySource(cwd);
+  applyMigrations(cwd, configFile);
+  deploySource(cwd, {
+    configFile,
+    vars: { SOVEREIGN_MAIL_APP_VERSION: sourceVersion },
+    workerName: workerNameFromConfig(config)
+  });
+  executeSql(
+    cwd,
+    `UPDATE release_state SET installed_version = ${quote(sourceVersion)}, installed_schema_version = ${sourceSchemaVersion}, updated_at = datetime('now') WHERE singleton = 1`,
+    { configFile }
+  );
   run("pnpm", ["sovereign-mail", "postdeploy"], cwd);
 }
 
-function applyMigrations(cwd) {
+function applyMigrations(cwd, configFile = "wrangler.jsonc") {
   run(
     "pnpm",
-    [
-      "exec",
-      "wrangler",
-      "d1",
-      "migrations",
-      "apply",
-      "DB",
-      "--remote",
-      "--config",
-      "wrangler.jsonc"
-    ],
+    ["exec", "wrangler", "d1", "migrations", "apply", "DB", "--remote", "--config", configFile],
     cwd
   );
 }

@@ -1,0 +1,22 @@
+{
+  "name": "@sovereign-mail/native-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/main.mjs",
+    "test": "node --test --test-force-exit test/*.test.mjs"
+  },
+  "dependencies": {
+    "smtp-server": "3.19.17",
+    "nodemailer": "10.1.1",
+    "@zone-eu/wildduck": "1.52.0"
+  },
+  "devDependencies": {
+    "imapflow": "2.4.2"
+  }
+}

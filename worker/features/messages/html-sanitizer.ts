@@ -1,5 +1,7 @@
 import sanitizeHtml from "sanitize-html";
 
+import { extractEmbeddedStyles, safeStyleValue, sanitizeInlineStyles } from "./css-sanitizer";
+import { createImagePolicy, type ImagePolicy, sanitizeImageSet } from "./image-policy";
 import { isSafeInlineImage } from "./inline-media";
 import { splitQuotedHtml } from "./quote-classifier";
 import type { StoredAttachment } from "./types";
@@ -41,6 +43,8 @@ const allowedTags = [
   "mark",
   "ol",
   "p",
+  "picture",
+  "source",
   "pre",
   "q",
   "s",
@@ -61,76 +65,6 @@ const allowedTags = [
   "ul"
 ];
 
-const styleProperties = [
-  "background-color",
-  "border",
-  "border-bottom",
-  "border-bottom-color",
-  "border-bottom-style",
-  "border-bottom-width",
-  "border-collapse",
-  "border-color",
-  "border-left",
-  "border-left-color",
-  "border-left-style",
-  "border-left-width",
-  "border-radius",
-  "border-right",
-  "border-right-color",
-  "border-right-style",
-  "border-right-width",
-  "border-spacing",
-  "border-style",
-  "border-top",
-  "border-top-color",
-  "border-top-style",
-  "border-top-width",
-  "border-width",
-  "box-sizing",
-  "clear",
-  "color",
-  "display",
-  "float",
-  "font-family",
-  "font-size",
-  "font-style",
-  "font-variant",
-  "font-weight",
-  "height",
-  "letter-spacing",
-  "line-height",
-  "list-style-position",
-  "list-style-type",
-  "margin",
-  "margin-bottom",
-  "margin-left",
-  "margin-right",
-  "margin-top",
-  "max-height",
-  "max-width",
-  "min-height",
-  "min-width",
-  "opacity",
-  "overflow-wrap",
-  "padding",
-  "padding-bottom",
-  "padding-left",
-  "padding-right",
-  "padding-top",
-  "text-align",
-  "text-decoration",
-  "text-indent",
-  "text-transform",
-  "vertical-align",
-  "white-space",
-  "width",
-  "word-break"
-];
-
-const safeStyleValue =
-  /^(?!.*(?:url\s*\(|image-set\s*\(|@import|expression\s*\(|javascript\s*:|data\s*:|var\s*\())[^\\]*$/i;
-const remoteCssResource = /(?:https?:)?\/\//i;
-
 export type SanitizedMessageHtml = {
   hasRemoteImages: boolean;
   html: string;
@@ -145,11 +79,25 @@ export function sanitizeMessageHtml(input: {
   origin: string;
   subject: string;
 }): SanitizedMessageHtml {
-  const parts = splitQuotedHtml(input.html, input.subject);
-  const body = sanitizeDisplayHtml({ ...input, html: parts.body });
-  const quote = parts.quote ? sanitizeDisplayHtml({ ...input, html: parts.quote }) : null;
+  const imagePolicy = createImagePolicy(input);
+  const prepared = extractEmbeddedStyles(input.html, imagePolicy.resolve);
+  const parts = splitQuotedHtml(prepared.html, input.subject);
+  const body = sanitizeDisplayHtml({
+    ...input,
+    imagePolicy,
+    html: parts.body,
+    styleSheet: prepared.styleSheet
+  });
+  const quote = parts.quote
+    ? sanitizeDisplayHtml({
+        ...input,
+        imagePolicy,
+        html: parts.quote,
+        styleSheet: prepared.styleSheet
+      })
+    : null;
   return {
-    hasRemoteImages: body.hasRemoteImages || Boolean(quote?.hasRemoteImages),
+    hasRemoteImages: imagePolicy.hasRemoteImages,
     html: body.html,
     quotedHtml: quote?.html || null
   };
@@ -174,6 +122,10 @@ export function sanitizeQuotedMessageHtml(input: {
       img: ["cid", "http", "https"]
     },
     transformTags: {
+      "*": (tagName, attributes) => ({
+        tagName,
+        attribs: { ...attributes, style: sanitizeInlineStyles(attributes.style ?? "", () => null) }
+      }),
       a: (tagName, attributes) => ({ tagName, attribs: safeLinkAttributes(attributes) }),
       img: (tagName, attributes) => {
         const source = attributes.src?.trim() ?? "";
@@ -207,71 +159,103 @@ export function sanitizeQuotedMessageHtml(input: {
 export function sanitizeEmailSignatureHtml(html: string): string {
   return sanitizeHtml(html.slice(0, 20_000), {
     ...sanitizerOptions(true),
-    allowedTags: allowedTags.filter((tag) => tag !== "img"),
+    allowedTags: allowedTags.filter((tag) => !["img", "source", "picture"].includes(tag)),
     transformTags: {
+      "*": (tagName, attributes) => ({
+        tagName,
+        attribs: { ...attributes, style: sanitizeInlineStyles(attributes.style ?? "", () => null) }
+      }),
       a: (tagName, attributes) => ({ tagName, attribs: safeLinkAttributes(attributes) })
     }
   });
 }
 
 function sanitizeDisplayHtml(input: {
-  allowRemoteImages: boolean;
-  attachments: StoredAttachment[];
   html: string;
-  messageId: string;
-  origin: string;
-}): Omit<SanitizedMessageHtml, "quotedHtml"> {
-  const origin = safeOrigin(input.origin);
-  const contentIds = new Map(
-    input.attachments.flatMap((attachment) =>
-      attachment.contentId
-        ? [[normalizeContentId(attachment.contentId), attachment.id] as const]
-        : []
-    )
-  );
-  let hasRemoteImages = false;
-
-  const html = sanitizeHtml(input.html, {
+  imagePolicy: ImagePolicy;
+  styleSheet: string;
+}): { html: string } {
+  const resolve = input.imagePolicy.resolve;
+  let pictureDepth = 0;
+  let pictureFallback = "";
+  const content = sanitizeHtml(input.html, {
     ...sanitizerOptions(),
-    onOpenTag(name, attributes) {
-      if (hasRemoteReference(name, attributes, origin)) hasRemoteImages = true;
+    // Styles are parsed and sanitized in the transform below, including background URLs.
+    parseStyleAttributes: false,
+    onOpenTag(name) {
+      if (name === "picture") {
+        pictureDepth++;
+        pictureFallback = "";
+      }
     },
+    onCloseTag(name) {
+      if (name === "picture") {
+        pictureDepth--;
+        pictureFallback = "";
+      }
+    },
+    allowedSchemesByTag: { img: ["http", "https", "data"], source: ["http", "https"] },
     transformTags: {
-      a: (tagName, attributes) => ({ tagName, attribs: safeLinkAttributes(attributes) }),
-      img: (tagName, attributes) => {
-        const source = attributes.src?.trim() ?? "";
-        const resolvedRemoteUrl = remoteUrl(source, origin);
-        const next: sanitizeHtml.Attributes = { ...attributes, loading: "lazy" };
-        delete next.srcset;
-        if (source.toLowerCase().startsWith("cid:")) {
-          const attachmentId = contentIds.get(normalizeContentId(source.slice(4)));
-          if (attachmentId) {
-            next.src = `${origin}/api/messages/${encodeURIComponent(input.messageId)}/inline/${encodeURIComponent(attachmentId)}`;
-          } else {
-            delete next.src;
+      "*": (tagName, attributes) => {
+        let next = { ...attributes };
+        delete next["data-mail-image-placeholder"];
+        if (attributes.style) next.style = sanitizeInlineStyles(attributes.style, resolve);
+        if (attributes.background) {
+          const background = resolve(attributes.background);
+          if (background) {
+            next.style = `${next.style ?? ""};background-image:url("${background.replaceAll('"', "%22")}")`;
           }
-        } else if (resolvedRemoteUrl) {
-          hasRemoteImages = true;
-          if (input.allowRemoteImages) {
-            next.src = resolvedRemoteUrl;
-            next.referrerpolicy = "no-referrer";
-          } else {
-            delete next.src;
-            next.alt ||= "Remote image hidden";
-          }
-        } else {
+          delete next.background;
+        }
+        if (tagName === "a") {
+          const link = safeLinkAttributes(next);
+          delete next.href;
+          delete next.target;
+          delete next.rel;
+          next = { ...next, ...link };
+        }
+        if (tagName === "img" || tagName === "source") {
+          const source = attributes.src?.trim() ?? "";
+          const srcset = sanitizeImageSet(attributes.srcset ?? "", resolve);
+          const candidate = srcset.split(/[,\s]/)[0] ?? "";
+          if (tagName === "source" && pictureDepth > 0 && candidate) pictureFallback ||= candidate;
+          const resolved =
+            resolve(source) || candidate || (pictureDepth > 0 ? pictureFallback : "");
           delete next.src;
+          delete next.srcset;
+          if (srcset) next.srcset = srcset;
+          if (tagName === "img") {
+            if (resolved) {
+              next.src = resolved;
+              next.loading = "eager";
+              next.referrerpolicy = "no-referrer";
+            } else {
+              // Sender-controlled attributes cannot manufacture our placeholder markers.
+              return {
+                tagName: "span",
+                attribs: {
+                  "data-mail-image-placeholder": "",
+                  role: "img",
+                  "aria-label":
+                    attributes.alt ||
+                    (input.imagePolicy.blocksRemote &&
+                    /(?:https?:\/\/|\/\/)/i.test(`${source} ${attributes.srcset ?? ""}`)
+                      ? "Remote image hidden"
+                      : "Image unavailable")
+                }
+              };
+            }
+          }
         }
         return { tagName, attribs: next };
       }
     }
   });
-
-  return { hasRemoteImages, html };
+  return { html: input.styleSheet ? `<style>${input.styleSheet}</style>${content}` : content };
 }
 
 function sanitizerOptions(includeSignatureMetadata = false): sanitizeHtml.IOptions {
-  const commonAttributes = ["align", "dir", "lang", "style", "title", "valign"];
+  const commonAttributes = ["align", "class", "dir", "id", "lang", "style", "title", "valign"];
   return {
     allowProtocolRelative: false,
     allowedAttributes: {
@@ -280,7 +264,9 @@ function sanitizerOptions(includeSignatureMetadata = false): sanitizeHtml.IOptio
         : commonAttributes,
       a: ["href", "rel", "target", "title"],
       col: ["span", "width"],
-      img: ["alt", "height", "loading", "referrerpolicy", "src", "title", "width"],
+      img: ["alt", "height", "loading", "referrerpolicy", "src", "srcset", "title", "width"],
+      source: ["srcset", "media", "type", "sizes"],
+      span: ["data-mail-image-placeholder", "role", "aria-label"],
       li: ["value"],
       ol: ["start", "type"],
       table: ["align", "bgcolor", "border", "cellpadding", "cellspacing", "height", "width"],
@@ -288,14 +274,11 @@ function sanitizerOptions(includeSignatureMetadata = false): sanitizeHtml.IOptio
       th: ["align", "bgcolor", "colspan", "height", "rowspan", "scope", "valign", "width"]
     },
     allowedSchemes: ["http", "https", "mailto", "tel"],
-    allowedStyles: {
-      "*": Object.fromEntries(styleProperties.map((property) => [property, [safeStyleValue]]))
-    },
     allowedTags,
     disallowedTagsMode: "discard",
     enforceHtmlBoundary: false,
     nestingLimit: 80,
-    nonTextTags: ["script", "style", "textarea", "option", "noscript"]
+    nonTextTags: ["script", "style", "textarea", "option", "noscript", "title"]
   };
 }
 
@@ -316,26 +299,6 @@ function absoluteRemoteUrl(value: string): string | null {
 
 function stripContentIdBrackets(value: string): string {
   return value.trim().replace(/^<|>$/g, "");
-}
-
-function hasRemoteReference(
-  tagName: string,
-  attributes: sanitizeHtml.Attributes,
-  origin: string
-): boolean {
-  if (attributes.style && remoteCssResource.test(attributes.style)) return true;
-  if (attributes.background && isRemoteUrl(attributes.background, origin)) return true;
-  if (["audio", "img", "link", "source", "video"].includes(tagName)) {
-    return [
-      attributes.src,
-      attributes.poster,
-      attributes.href,
-      ...(attributes.srcset?.split(",") ?? [])
-    ]
-      .filter((value): value is string => Boolean(value))
-      .some((value) => isRemoteUrl(value.trim().split(/\s+/, 1)[0] ?? "", origin));
-  }
-  return false;
 }
 
 function safeLinkAttributes(attributes: sanitizeHtml.Attributes): sanitizeHtml.Attributes {
@@ -365,20 +328,6 @@ function isSafeLink(value: string): boolean {
   }
 }
 
-function isRemoteUrl(value: string, origin: string): boolean {
-  return remoteUrl(value, origin) !== null;
-}
-
-function remoteUrl(value: string, origin: string): string | null {
-  if (!value || value.toLowerCase().startsWith("cid:")) return null;
-  try {
-    const url = new URL(value, origin);
-    return ["http:", "https:"].includes(url.protocol) && url.origin !== origin ? url.href : null;
-  } catch {
-    return null;
-  }
-}
-
 function normalizeContentId(value: string): string {
   const decoded = safeDecode(value).trim().replace(/^<|>$/g, "");
   return decoded.toLowerCase();
@@ -390,10 +339,4 @@ function safeDecode(value: string): string {
   } catch {
     return value;
   }
-}
-
-function safeOrigin(value: string): string {
-  const url = new URL(value);
-  if (!["http:", "https:"].includes(url.protocol)) throw new Error("Invalid application origin.");
-  return url.origin;
 }

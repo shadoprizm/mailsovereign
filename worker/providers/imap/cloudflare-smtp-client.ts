@@ -38,7 +38,7 @@ export function createCloudflareSmtpClient(
           "This SMTP connection cannot safely send the requested message features."
         );
       }
-      const messageId = `<${crypto.randomUUID()}@${fromDomain(email.from)}>`;
+      const messageId = email.messageId ?? `<${crypto.randomUUID()}@${fromDomain(email.from)}>`;
       let runtime: SmtpRuntime | undefined;
       try {
         runtime = await connectRuntime(runtimeOptions(config, credentials));
@@ -46,7 +46,11 @@ export function createCloudflareSmtpClient(
         return { messageId };
       } catch (error) {
         if (error instanceof SmtpSubmitError) throw error;
-        throw new SmtpSubmitError(classifyFailure(error), "The SMTP submission failed.");
+        throw new SmtpSubmitError(
+          classifyFailure(error),
+          "The SMTP submission failed.",
+          !runtime || explicitRejection(error)
+        );
       } finally {
         await runtime?.close().catch(() => undefined);
       }
@@ -78,9 +82,10 @@ function runtimeOptions(
 function toWorkerMailerMessage(email: OutboundEmail, messageId: string): EmailOptions {
   return {
     from: toWorkerMailerAddress(email.from),
-    to: toWorkerMailerAddresses(email.to),
-    ...(email.cc ? { cc: toWorkerMailerAddresses(email.cc) } : {}),
-    ...(email.bcc ? { bcc: toWorkerMailerAddresses(email.bcc) } : {}),
+    to: toWorkerMailerAddresses(email.to, email.recipientNames),
+    ...(email.cc ? { cc: toWorkerMailerAddresses(email.cc, email.recipientNames) } : {}),
+    ...(email.bcc ? { bcc: toWorkerMailerAddresses(email.bcc, email.recipientNames) } : {}),
+    ...(email.replyTo ? { reply: toWorkerMailerAddress(email.replyTo) } : {}),
     subject: email.subject,
     text: email.text,
     ...(email.html ? { html: email.html } : {}),
@@ -104,8 +109,22 @@ function toWorkerMailerAddress(address: OutboundAddress): string | { name: strin
   return typeof address === "string" ? address : { name: address.name, email: address.email };
 }
 
-function toWorkerMailerAddresses(addresses: string | readonly string[]): string | string[] {
-  return typeof addresses === "string" ? addresses : [...addresses];
+function toWorkerMailerAddresses(
+  addresses: string | readonly string[],
+  names?: Readonly<Record<string, string>>
+): EmailOptions["to"] {
+  if (!names) return typeof addresses === "string" ? addresses : [...addresses];
+  const values = typeof addresses === "string" ? [addresses] : addresses;
+  return values.map((email) => ({ email, ...(names[email] ? { name: names[email] } : {}) }));
+}
+
+function explicitRejection(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  // Match only the pinned SMTP library's protocol rejection prefixes and response position.
+  // Never mistake a status-like number in application content for a server rejection.
+  return /^(?:Invalid (?:MAIL FROM|RCPT TO): <[^>]*> |Failed to send DATA: |Failed send email body: )[45]\d\d[ -]/.test(
+    error.message
+  );
 }
 
 function withoutBccHeaders(headers: Readonly<Record<string, string>> | undefined) {

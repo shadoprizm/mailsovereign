@@ -12,65 +12,65 @@ import {
   storeLayoutValue
 } from "@/components/layout/desktop-layout";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import type { Mailbox } from "@/features/mailboxes/types";
 import {
   deleteConversation,
   getMessageThread,
   runConversationAction
 } from "@/features/messages/api";
+import { ConversationFilterBar } from "@/features/messages/conversation-filter-bar";
+import { ConversationFilterPanel } from "@/features/messages/conversation-filter-panel";
 import {
-  ConversationListHeader,
+  activeConversationFilterCount,
+  type ConversationFilters,
+  conversationFilterApiParams,
+  emptyConversationFilters
+} from "@/features/messages/conversation-filters";
+import { ConversationListHeader } from "@/features/messages/conversation-list-header";
+import {
   ConversationSelectionDeleteDialog,
   useConversationSelection
 } from "@/features/messages/conversation-selection";
+import { ConversationSelectionBanner } from "@/features/messages/conversation-selection-banner";
 import { MessageDetail } from "@/features/messages/message-detail";
 import { MessageList } from "@/features/messages/message-list";
-import type {
-  ConversationAction,
-  ConversationSummary,
-  MessageDetail as MessageDetailType
-} from "@/features/messages/types";
+import type { MessageDetail as MessageDetailType } from "@/features/messages/types";
+import { BulkOrganizationDialog } from "@/features/organization/bulk-organization-dialog";
+import {
+  ConversationLabelDialog,
+  ConversationOrganizationDialog
+} from "@/features/organization/conversation-organization-dialogs";
 import { useDesktopShell } from "@/hooks/use-desktop-shell";
 import { cn } from "@/lib/cn";
-import type { MailFolderId } from "@/lib/routes";
 import { mailFolders } from "@/lib/routes";
-
-type InboxPageProps = {
-  activeFolder: MailFolderId;
-  conversations: ConversationSummary[];
-  defaultFromMailboxId: string | null;
-  hasMore: boolean;
-  isLoadingMore: boolean;
-  loadMoreError: string | null;
-  mailboxes: Mailbox[];
-  selectedId: string | null;
-  onDraftsChange?: () => void;
-  onConversationAction: (threadId: string, action: ConversationAction, affected: number) => void;
-  onLoadMore: () => void;
-  onRefresh: () => Promise<void> | void;
-  onMessageRouteChange: (folder: MailFolderId, messageId: string | null) => void;
-  onSelect: (messageId: string) => void;
-  totalCount: number | null;
-};
+import type { InboxPageProps } from "./inbox-page-types";
 
 export function InboxPage({
   activeFolder,
   conversations,
+  filters = emptyConversationFilters,
+  mailboxId = "all",
+  search = "",
   defaultFromMailboxId,
   hasMore,
   isLoadingMore,
   loadMoreError,
   mailboxes,
+  labels = [],
+  activeLabelId = null,
   selectedId,
   onDraftsChange,
   onConversationAction,
+  onFiltersChange = noopFiltersChange,
   onLoadMore,
+  onLabelChange = noopLabelChange,
+  onLabelsChanged,
   onRefresh,
   onMessageRouteChange,
   onSelect,
   totalCount
 }: InboxPageProps): React.ReactElement {
   const desktopShell = useDesktopShell();
+  const handleLabelsChanged = onLabelsChanged ?? (async () => Promise.resolve(onRefresh()));
   const conversationListPanelRef = usePanelRef();
   const [initialConversationListWidth] = React.useState(() =>
     readStoredWidth(
@@ -88,6 +88,9 @@ export function InboxPage({
   const [thread, setThread] = React.useState<MessageDetailType[]>([]);
   const [detailError, setDetailError] = React.useState<string | null>(null);
   const [detailLoading, setDetailLoading] = React.useState(false);
+  const [bulkOrganizeOpen, setBulkOrganizeOpen] = React.useState(false);
+  const [filterOpen, setFilterOpen] = React.useState(false);
+  const activeFilterCount = activeConversationFilterCount(filters, activeLabelId);
   const onRefreshRef = React.useRef(onRefresh);
   React.useEffect(() => {
     onRefreshRef.current = onRefresh;
@@ -158,6 +161,14 @@ export function InboxPage({
   const selection = useConversationSelection({
     activeFolder,
     conversations,
+    scope: {
+      ...conversationFilterApiParams(filters),
+      folder: activeFolder,
+      labelId: activeLabelId ?? undefined,
+      mailboxId: mailboxId === "all" ? undefined : mailboxId,
+      search: search || undefined
+    },
+    totalCount,
     selectedThreadId,
     onConversationAction,
     onMessageRouteChange,
@@ -177,18 +188,22 @@ export function InboxPage({
 
   async function handleAction(action: Parameters<typeof runConversationAction>[1]) {
     if (!selectedId) return;
-    const updated = await runConversationAction(selectedId, action, activeFolder);
-    onConversationAction(updated.threadId, action, updated.affected);
-    void Promise.resolve(onRefresh()).catch(() => undefined);
-    if (
-      action === "archive" ||
-      action === "trash" ||
-      (activeFolder === "starred" && action === "unstar")
-    ) {
-      onMessageRouteChange(activeFolder, null);
-      return;
+    try {
+      const updated = await runConversationAction(selectedId, action, activeFolder);
+      onConversationAction(updated.threadId, action, updated.affected);
+      void Promise.resolve(onRefresh()).catch(() => undefined);
+      if (
+        action === "archive" ||
+        action === "trash" ||
+        (activeFolder === "starred" && action === "unstar")
+      ) {
+        onMessageRouteChange(activeFolder, null);
+        return;
+      }
+      await loadThread(selectedId);
+    } catch {
+      toast.error("Could not update this conversation. Try again.");
     }
-    await loadThread(selectedId);
   }
 
   async function handleDelete(): Promise<void> {
@@ -203,7 +218,7 @@ export function InboxPage({
   const listSection = (
     <section
       className={cn(
-        "h-full min-h-0 flex-col bg-card/35",
+        "h-full min-h-0 flex-col gap-0 bg-background md:bg-card/35",
         desktopShell || !selectedId ? "flex" : "hidden"
       )}
       data-mobile-scroll-active={!desktopShell && !selectedId ? "true" : undefined}
@@ -214,19 +229,49 @@ export function InboxPage({
         activeLabel={activeLabel}
         conversationCount={conversations.length}
         conversationCountLabel={conversationCountLabel}
+        filterCount={activeFilterCount}
+        onOrganizeInbox={() => setBulkOrganizeOpen(true)}
+        onOpenFilters={() => setFilterOpen(true)}
         selection={selection}
+      />
+      <ConversationSelectionBanner selection={selection} loadedCount={conversations.length} />
+      <ConversationFilterBar
+        activeLabelId={activeLabelId}
+        filters={filters}
+        labels={labels}
+        onChange={onFiltersChange}
+        onLabelChange={onLabelChange}
       />
       <MessageList
         activeFolder={activeFolder}
+        scopeKey={JSON.stringify([activeFolder, mailboxId, search, filters, activeLabelId])}
+        canArchive={(conversation) =>
+          (activeFolder === "inbox" || activeFolder === "catchall") &&
+          mailboxes.some(
+            (mailbox) =>
+              mailbox.id === conversation.mailboxId &&
+              (mailbox.accessLevel === "agent" || mailbox.accessLevel === "manager")
+          )
+        }
+        onRowAction={async (conversation, action) => {
+          const updated = await runConversationAction(conversation.id, action, activeFolder);
+          onConversationAction(updated.threadId, action, updated.affected);
+          await onRefresh();
+        }}
         conversations={conversations}
         hasMore={hasMore}
         isLoadingMore={isLoadingMore}
+        isFiltered={activeFilterCount > 0}
         loadMoreError={loadMoreError}
         selectionMode={selection.selectionMode}
         selectedThreadIds={selection.selectedThreadIds}
         selectedThreadId={selectedThreadId}
         onLoadMore={onLoadMore}
         onRefresh={onRefresh}
+        onClearFilters={() => {
+          onFiltersChange({ ...emptyConversationFilters });
+          onLabelChange(null);
+        }}
         onSelectionChange={selection.setSelected}
         onSelect={(conversation) => onSelect(conversation.id)}
       />
@@ -267,14 +312,48 @@ export function InboxPage({
     </section>
   );
 
-  const bulkDeleteDialog = <ConversationSelectionDeleteDialog selection={selection} />;
+  const bulkDialogs = (
+    <>
+      <ConversationSelectionDeleteDialog selection={selection} />
+      <ConversationFilterPanel
+        activeLabelId={activeLabelId}
+        filters={filters}
+        labels={labels}
+        open={filterOpen}
+        onApply={(nextFilters, nextLabelId) => {
+          onFiltersChange(nextFilters);
+          onLabelChange(nextLabelId);
+        }}
+        onOpenChange={setFilterOpen}
+      />
+      <BulkOrganizationDialog
+        open={bulkOrganizeOpen}
+        onChanged={handleLabelsChanged}
+        onOpenChange={setBulkOrganizeOpen}
+      />
+      <ConversationLabelDialog
+        conversations={selection.selectedConversations}
+        labels={labels}
+        open={selection.labelOpen}
+        onChanged={handleLabelsChanged}
+        onOpenChange={selection.setLabelOpen}
+      />
+      <ConversationOrganizationDialog
+        conversations={selection.selectedConversations}
+        labels={labels}
+        open={selection.organizeOpen}
+        onChanged={handleLabelsChanged}
+        onOpenChange={selection.setOrganizeOpen}
+      />
+    </>
+  );
 
   if (!desktopShell) {
     return (
       <div className="h-full overflow-hidden">
         {listSection}
         {readerSection}
-        {bulkDeleteDialog}
+        {bulkDialogs}
       </div>
     );
   }
@@ -306,7 +385,11 @@ export function InboxPage({
           {readerSection}
         </ResizablePanel>
       </ResizablePanelGroup>
-      {bulkDeleteDialog}
+      {bulkDialogs}
     </>
   );
 }
+
+function noopLabelChange(_labelId: string | null): void {}
+
+function noopFiltersChange(_filters: ConversationFilters): void {}

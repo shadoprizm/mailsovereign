@@ -43,13 +43,13 @@ export function DraftsPage({
   const selectedDraft = selectedId ? drafts.find((draft) => draft.id === selectedId) : null;
 
   return (
-    <section className="flex h-full min-h-0 flex-col bg-card/35">
-      <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
+    <section className="flex h-full min-h-0 flex-col gap-3 bg-background p-3 md:gap-0 md:bg-card/35 md:p-0">
+      <div className="flex min-h-14 shrink-0 items-center justify-between rounded-xl border bg-card px-4 py-2 shadow-sm md:h-12 md:min-h-0 md:rounded-none md:border-x-0 md:border-t-0 md:bg-transparent md:py-0 md:shadow-none">
         <h1 className="text-sm font-medium">Drafts</h1>
         <span className="font-mono text-[11px] text-muted-foreground">{visibleDrafts.length}</span>
       </div>
       {selectedId && !selectedDraft && !isLoading ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 rounded-xl border bg-card p-8 text-center shadow-sm md:rounded-none md:border-0 md:bg-transparent md:shadow-none">
           <div className="flex size-9 items-center justify-center rounded-md border bg-card text-muted-foreground">
             <FilePenLine className="size-4" />
           </div>
@@ -70,7 +70,7 @@ export function DraftsPage({
       ) : visibleDrafts.length === 0 ? (
         <EmptyDrafts filtered={drafts.length > 0} />
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div className="grid min-h-0 flex-1 content-start gap-3 overflow-auto md:block">
           {visibleDrafts.map((draft) => (
             <DraftListItem
               draft={draft}
@@ -113,9 +113,14 @@ function DraftListItem({
   const snippet = draft.text.trim().replace(/\s+/g, " ") || "No message content";
 
   return (
-    <div className={cn("relative border-b border-border/70", isActive && "bg-muted/85")}>
+    <div
+      className={cn(
+        "relative rounded-xl border border-border/70 shadow-sm max-md:bg-card md:rounded-none md:border-x-0 md:border-t-0 md:shadow-none",
+        isActive && "bg-muted/85"
+      )}
+    >
       <a
-        className="grid min-h-14 w-full grid-cols-[minmax(8rem,0.7fr)_minmax(0,2fr)_auto] items-center gap-3 py-2.5 pl-4 pr-24 text-left transition-colors hover:bg-muted/55 max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:pr-14"
+        className="grid min-h-14 w-full grid-cols-[minmax(8rem,0.7fr)_minmax(0,2fr)_auto] items-center gap-3 py-3 pl-4 pr-24 text-left transition-colors hover:bg-muted/55 max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:pr-14 md:py-2.5"
         href={appRoutePath({ kind: "drafts", draftId: draft.id })}
         onClick={(event) => {
           if (isModifiedNavigation(event)) return;
@@ -165,7 +170,7 @@ function DraftListItem({
 
 function EmptyDrafts({ filtered }: { filtered: boolean }): React.ReactElement {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-muted-foreground">
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-xl border bg-card p-8 text-center text-muted-foreground shadow-sm md:rounded-none md:border-0 md:bg-transparent md:shadow-none">
       <div className="flex size-9 items-center justify-center rounded-md border bg-card">
         <FilePenLine className="size-4" />
       </div>

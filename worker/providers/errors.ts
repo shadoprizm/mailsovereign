@@ -41,11 +41,13 @@ export class ProviderError extends Error {
   readonly code: ProviderErrorCode;
   readonly providerId: string | null;
   readonly retryable: boolean;
+  readonly definitelyNotAccepted: boolean;
 
-  constructor(code: ProviderErrorCode, providerId: string | null) {
+  constructor(code: ProviderErrorCode, providerId: string | null, definitelyNotAccepted = false) {
     super(messages[code]);
     this.name = "ProviderError";
     this.code = code;
+    this.definitelyNotAccepted = definitelyNotAccepted;
     this.providerId = providerId;
     this.retryable = retryableCodes.has(code);
   }

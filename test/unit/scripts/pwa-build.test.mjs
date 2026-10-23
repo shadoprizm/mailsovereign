@@ -47,6 +47,8 @@ describe("PWA build contract", () => {
     expect(logo).toContain('stroke="#F5B942"');
     expect(logo).toContain('fill="#31D6A0"');
     expect(favicon).toBe(logo);
+    expect(headers).toContain("frame-src 'self' blob:");
+    expect(headers).toContain("img-src 'self' data: blob: https: http:");
     expect(headers).toMatch(/\/service-worker\.js[\s\S]*no-cache, no-store, must-revalidate/);
     expect(headers).toMatch(/\/assets\/\*[\s\S]*max-age=31536000, immutable/);
   });

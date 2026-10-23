@@ -3,18 +3,18 @@ import { getSetting } from "../../db/client";
 import type { WorkerEnv } from "../../lib/env";
 import { AppError } from "../../lib/errors";
 import { sovereignMailProductConfig } from "../../lib/product-config";
-import type { ReleaseManifest, UpdateStatus } from "./types";
+import type { ReleaseManifest, UpdateCompatibilityIssue, UpdateStatus } from "./types";
 
 const product = "sovereign-mail" as const;
-const installedSchemaVersion = 20;
+const versionSchema = z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
 const envelopeSchema = z.object({ payload: z.string().min(1), signature: z.string().min(1) });
 const manifestSchema = z.object({
   format: z.literal("sovereign-mail-release-v1"),
   product: z.literal("sovereign-mail"),
   channel: z.literal("stable"),
-  version: z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/),
+  version: versionSchema,
   schemaVersion: z.number().int().positive(),
-  minVersion: z.string(),
+  minVersion: versionSchema,
   publishedAt: z.string().datetime(),
   notesUrl: z.string().url(),
   artifact: z.object({
@@ -24,18 +24,26 @@ const manifestSchema = z.object({
   }),
   keyId: z.literal("sovereign-mail-release-2026-01")
 });
+const releaseStateSchema = z.object({
+  product: z.literal("sovereign-mail"),
+  installed_version: versionSchema,
+  installed_schema_version: z.number().int().positive(),
+  channel: z.literal("stable")
+});
 
 export async function getUpdateStatus(
   env: WorkerEnv,
   fetcher: typeof fetch = fetch
 ): Promise<UpdateStatus> {
   assertUpdatesEnabled(env);
-  const installedVersion = env.SOVEREIGN_MAIL_APP_VERSION ?? "0.1.1";
-  const response = await fetcher(
-    env.SOVEREIGN_MAIL_RELEASE_MANIFEST_URL?.trim() ||
-      sovereignMailProductConfig.releaseManifestUrl,
-    { headers: { accept: "application/json" }, signal: AbortSignal.timeout(5_000) }
-  );
+  const [installed, response] = await Promise.all([
+    readInstalledRelease(env.DB),
+    fetcher(
+      env.SOVEREIGN_MAIL_RELEASE_MANIFEST_URL?.trim() ||
+        sovereignMailProductConfig.releaseManifestUrl,
+      { headers: { accept: "application/json" }, signal: AbortSignal.timeout(5_000) }
+    )
+  ]);
   if (!response.ok)
     throw new AppError("UPDATE_CHECK_FAILED", "Update service is unavailable.", 503);
   const envelope = envelopeSchema.parse(await response.json());
@@ -53,14 +61,18 @@ export async function getUpdateStatus(
       "Release product does not match this installation.",
       503
     );
+  const runningVersion = parseRunningVersion(env.SOVEREIGN_MAIL_APP_VERSION);
+  const compatibilityIssue = updateCompatibilityIssue(runningVersion, installed, release);
   return {
     product,
-    installedVersion,
-    installedSchemaVersion,
+    runningVersion,
+    installedVersion: installed.installed_version,
+    installedSchemaVersion: installed.installed_schema_version,
     channel: "stable",
     checkedAt: new Date().toISOString(),
-    available: compareVersions(release.version, installedVersion) > 0,
-    compatible: compareVersions(installedVersion, release.minVersion) >= 0,
+    available: compareVersions(release.version, installed.installed_version) > 0,
+    compatible: compatibilityIssue === null,
+    compatibilityIssue,
     release: release as ReleaseManifest
   };
 }
@@ -71,6 +83,17 @@ export async function triggerUpdate(
   fetcher: typeof fetch = fetch
 ): Promise<{ buildId: string; status: string }> {
   assertUpdatesEnabled(env);
+  const update = await getUpdateStatus(env, fetcher);
+  if (!update.available) {
+    throw new AppError("UPDATE_NOT_AVAILABLE", "This installation is already up to date.", 409);
+  }
+  if (update.compatibilityIssue) {
+    throw new AppError(
+      `UPDATE_${update.compatibilityIssue.code.replaceAll("-", "_").toUpperCase()}`,
+      update.compatibilityIssue.message,
+      409
+    );
+  }
   const domain =
     (await getSetting(env.DB, "portal_host", z.string())) ??
     (await getSetting(env.DB, "primary_domain", z.string()));
@@ -107,23 +130,48 @@ export async function triggerUpdate(
       404
     );
   const triggers = await cloudflare<{
-    result: Array<{ id?: string; trigger_uuid?: string; branch_includes?: string[] }>;
+    result: Array<{
+      id?: string;
+      trigger_uuid?: string;
+      branch_includes?: string[];
+      deploy_command?: string;
+      repo_connection?: {
+        provider_type?: string;
+        provider_account_name?: string;
+        repo_name?: string;
+      };
+    }>;
   }>(
     `https://api.cloudflare.com/client/v4/accounts/${accountId}/builds/workers/${script.tag}/triggers`,
     { headers },
     fetcher
   );
-  const trigger =
-    triggers.result.find((item) => item.branch_includes?.includes("main")) ?? triggers.result[0];
-  if (!trigger)
+  const runner = sovereignMailProductConfig.workersBuilds;
+  if (triggers.result.length === 0)
     throw new AppError(
-      "UPDATE_TRIGGER_NOT_FOUND",
-      "Connect this Worker to Workers Builds before updating.",
+      "UPDATE_RUNNER_NOT_CONFIGURED",
+      "Automatic updates are not configured for this installation. Configure the documented Sovereign Mail Workers Builds release runner or use the signed terminal update command.",
       409
     );
+  const trigger = triggers.result.find(
+    (item) =>
+      (typeof item.trigger_uuid === "string" || typeof item.id === "string") &&
+      item.branch_includes?.includes(runner.branch) &&
+      item.deploy_command?.trim() === runner.deployCommand &&
+      item.repo_connection?.provider_type === runner.provider &&
+      item.repo_connection.provider_account_name === runner.account &&
+      item.repo_connection.repo_name === runner.repository
+  );
+  if (!trigger) {
+    throw new AppError(
+      "UPDATE_RUNNER_INVALID",
+      "The connected Workers Build is not the Sovereign Mail signed-release runner. Correct its repository, production branch, and deploy command before updating.",
+      409
+    );
+  }
   const build = await cloudflare<{ result: { build_uuid?: string; id?: string; status?: string } }>(
     `https://api.cloudflare.com/client/v4/accounts/${accountId}/builds/triggers/${trigger.trigger_uuid ?? trigger.id}/builds`,
-    { method: "POST", headers, body: JSON.stringify({ branch: "main" }) },
+    { method: "POST", headers, body: JSON.stringify({ branch: runner.branch }) },
     fetcher
   );
   const buildId = build.result.build_uuid ?? build.result.id;
@@ -134,6 +182,57 @@ export async function triggerUpdate(
       502
     );
   return { buildId, status: build.result.status ?? "queued" };
+}
+
+async function readInstalledRelease(db: D1Database): Promise<z.infer<typeof releaseStateSchema>> {
+  const row = await db
+    .prepare(
+      `SELECT product, installed_version, installed_schema_version, channel
+       FROM release_state
+       WHERE singleton = 1`
+    )
+    .first<Record<string, unknown>>();
+  const parsed = releaseStateSchema.safeParse(row);
+  if (!parsed.success) {
+    throw new AppError(
+      "UPDATE_RELEASE_STATE_INVALID",
+      "The installation release record is missing or invalid. Run Sovereign Mail doctor before updating.",
+      503
+    );
+  }
+  return parsed.data;
+}
+
+function parseRunningVersion(value: string | undefined): string | null {
+  const parsed = versionSchema.safeParse(value?.trim());
+  return parsed.success ? parsed.data : null;
+}
+
+function updateCompatibilityIssue(
+  runningVersion: string | null,
+  installed: z.infer<typeof releaseStateSchema>,
+  release: z.infer<typeof manifestSchema>
+): UpdateCompatibilityIssue | null {
+  if (runningVersion !== installed.installed_version) {
+    return {
+      code: "release-state-mismatch",
+      message:
+        "The running Worker version does not match the installation release record. Run Sovereign Mail doctor and reconcile the deployment before updating."
+    };
+  }
+  if (release.schemaVersion < installed.installed_schema_version) {
+    return {
+      code: "schema-downgrade",
+      message: `This release supports schema ${release.schemaVersion}, but this installation already uses schema ${installed.installed_schema_version}. Install a newer signed release instead.`
+    };
+  }
+  if (compareVersions(installed.installed_version, release.minVersion) < 0) {
+    return {
+      code: "minimum-version",
+      message: "This release cannot update directly from the installed version."
+    };
+  }
+  return null;
 }
 
 export function assertUpdatesEnabled(env: WorkerEnv): void {

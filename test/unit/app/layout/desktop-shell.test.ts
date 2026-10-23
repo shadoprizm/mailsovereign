@@ -21,7 +21,6 @@ const resizable = readFileSync(
   new URL("../../../../app/components/ui/resizable.tsx", import.meta.url),
   "utf8"
 );
-const styles = readFileSync(new URL("../../../../app/styles.css", import.meta.url), "utf8");
 
 describe("desktop application shell", () => {
   it("uses a persisted collapsible sidebar with an accessible resize divider", () => {
@@ -42,11 +41,8 @@ describe("desktop application shell", () => {
     expect(resizable).toContain("ResizablePrimitive.Separator");
   });
 
-  it("shows a soft minimum-size guard instead of switching a fine-pointer window to mobile", () => {
+  it("switches narrow windows to a usable compact layout", () => {
     expect(desktopLayout).toContain("desktopMinimumWidth = 1024");
-    expect(desktopLayout).toContain("desktopMinimumHeight = 600");
-    expect(appShell).toContain("Make the Sovereign Mail window a little larger");
-    expect(styles).toContain("(hover: hover) and (pointer: fine) and (max-width: 1023px)");
-    expect(styles).toContain("(hover: hover) and (pointer: fine) and (max-height: 599px)");
+    expect(appShell).not.toContain("Make the Sovereign Mail window a little larger");
   });
 });

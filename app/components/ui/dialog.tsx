@@ -2,9 +2,33 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import * as React from "react";
 
+import { useBackDismiss } from "@/hooks/use-back-dismiss";
 import { cn } from "@/lib/cn";
 
-export const Dialog = DialogPrimitive.Root;
+export function Dialog({
+  open: controlledOpen,
+  defaultOpen = false,
+  onOpenChange,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Root>): React.ReactElement {
+  const [localOpen, setLocalOpen] = React.useState(defaultOpen);
+  const open = controlledOpen ?? localOpen;
+  const change = (next: boolean): void => {
+    if (controlledOpen === undefined) setLocalOpen(next);
+    onOpenChange?.(next);
+  };
+  const close = useBackDismiss(open, () => change(false));
+  return (
+    <DialogPrimitive.Root
+      {...props}
+      open={open}
+      onOpenChange={(next) => {
+        if (next) change(true);
+        else close();
+      }}
+    />
+  );
+}
 export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogPortal = DialogPrimitive.Portal;
 export const DialogClose = DialogPrimitive.Close;
@@ -32,6 +56,7 @@ export const DialogContent = React.forwardRef<
         "fixed left-1/2 top-1/2 z-50 grid w-[min(92vw,720px)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border bg-background p-5 shadow-lg",
         className
       )}
+      data-mobile-dialog=""
       ref={ref}
       {...props}
     >

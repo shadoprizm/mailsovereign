@@ -2,6 +2,8 @@ import { nowIso } from "../../db/client";
 import { AppError } from "../../lib/errors";
 
 import type { MessageAction } from "./actions";
+import type { ConversationQueryFilters } from "./conversation-filter-query";
+import { conversationScopeQuery } from "./conversation-scope-query";
 import type {
   ConversationFolder,
   ConversationPage,
@@ -9,13 +11,14 @@ import type {
   ConversationSummary
 } from "./types";
 
-export type ListConversationFilters = {
+export type ListConversationFilters = ConversationQueryFilters & {
   cursor?: string | undefined;
   folder?: ConversationFolder | undefined;
   limit?: number | undefined;
   mailboxId?: string | undefined;
   mailboxIds: string[];
-  search?: string | undefined;
+  labelId?: string | undefined;
+  labelUserId?: string | undefined;
 };
 
 export async function listConversations(
@@ -41,28 +44,7 @@ export async function listConversationPage(
     };
   }
 
-  const accessibleWhere = `messages.mailbox_id IN (${filters.mailboxIds.map(() => "?").join(", ")})`;
-  const params: Array<string | number> = [...filters.mailboxIds];
-
-  const eligibilityWhere: string[] = [];
-  if (filters.mailboxId) {
-    eligibilityWhere.push("accessible.mailbox_id = ?");
-    params.push(filters.mailboxId);
-  }
-  if (filters.folder === "starred") {
-    eligibilityWhere.push("accessible.starred_at IS NOT NULL");
-  } else if (filters.folder) {
-    eligibilityWhere.push("accessible.folder = ?");
-    params.push(filters.folder);
-  }
-  if (filters.search) {
-    eligibilityWhere.push(
-      `(accessible.subject LIKE ? OR accessible.from_address LIKE ?
-        OR accessible.to_json LIKE ? OR accessible.snippet LIKE ? OR accessible.text_body LIKE ?)`
-    );
-    const like = `%${filters.search}%`;
-    params.push(like, like, like, like, like);
-  }
+  const { cte, params } = conversationScopeQuery(filters);
 
   const cursor = filters.cursor ? decodeConversationCursor(filters.cursor) : null;
   if (cursor) {
@@ -72,17 +54,7 @@ export async function listConversationPage(
   params.push(limit + 1);
   const result = await db
     .prepare(
-      `WITH accessible AS (
-         SELECT messages.*,
-           COALESCE(messages.received_at, messages.sent_at, messages.created_at) AS activity_at
-         FROM messages
-         WHERE ${accessibleWhere}
-       ),
-       eligible_threads AS (
-         SELECT DISTINCT accessible.thread_id
-         FROM accessible
-         ${eligibilityWhere.length ? `WHERE ${eligibilityWhere.join(" AND ")}` : ""}
-       ),
+      `WITH ${cte},
        ranked AS (
          SELECT accessible.*,
            ROW_NUMBER() OVER (
@@ -127,8 +99,17 @@ export async function listConversationPage(
 
   const pageRows = result.results.slice(0, limit);
   const finalRow = pageRows.at(-1);
+  const labelsByThread = filters.labelUserId
+    ? await listConversationLabels(
+        db,
+        filters.labelUserId,
+        pageRows.map((row) => row.thread_id)
+      )
+    : new Map<string, ConversationSummary["labels"]>();
   return {
-    conversations: pageRows.map(mapConversationSummary),
+    conversations: pageRows.map((row) =>
+      mapConversationSummary(row, labelsByThread.get(row.thread_id) ?? [])
+    ),
     nextCursor:
       result.results.length > limit && finalRow
         ? encodeConversationCursor({ activityAt: finalRow.activity_at, id: finalRow.id })
@@ -206,7 +187,10 @@ export async function updateConversationAction(
   return { affected: result.meta.changes, threadId: selected.thread_id };
 }
 
-function mapConversationSummary(row: ConversationRow): ConversationSummary {
+function mapConversationSummary(
+  row: ConversationRow,
+  labels: ConversationSummary["labels"]
+): ConversationSummary {
   return {
     id: row.id,
     threadId: row.thread_id,
@@ -224,9 +208,41 @@ function mapConversationSummary(row: ConversationRow): ConversationSummary {
     hasAttachments: row.has_thread_attachments === 1,
     createdAt: row.created_at,
     isStarred: row.is_starred === 1,
+    labels,
     messageCount: row.message_count,
     unreadCount: row.unread_count
   };
+}
+
+async function listConversationLabels(
+  db: D1Database,
+  userId: string,
+  threadIds: string[]
+): Promise<Map<string, ConversationSummary["labels"]>> {
+  const labelsByThread = new Map<string, ConversationSummary["labels"]>();
+  if (!threadIds.length) return labelsByThread;
+  const result = await db
+    .prepare(
+      `SELECT thread_labels.thread_id, mail_labels.id, mail_labels.name, mail_labels.color
+       FROM thread_labels
+       JOIN mail_labels ON mail_labels.id = thread_labels.label_id
+       WHERE thread_labels.user_id = ?
+         AND thread_labels.thread_id IN (${threadIds.map(() => "?").join(", ")})
+       ORDER BY mail_labels.is_system DESC, mail_labels.name COLLATE NOCASE`
+    )
+    .bind(userId, ...threadIds)
+    .all<{
+      thread_id: string;
+      id: string;
+      name: string;
+      color: ConversationSummary["labels"][number]["color"];
+    }>();
+  for (const row of result.results) {
+    const labels = labelsByThread.get(row.thread_id) ?? [];
+    labels.push({ id: row.id, name: row.name, color: row.color });
+    labelsByThread.set(row.thread_id, labels);
+  }
+  return labelsByThread;
 }
 
 type ConversationCursor = {

@@ -5,12 +5,14 @@ import { UpdateSettings } from "@/features/updates/update-settings";
 
 const availableStatus: UpdateStatus = {
   product: "sovereign-mail",
+  runningVersion: "0.1.2",
   installedVersion: "0.1.2",
   installedSchemaVersion: 2,
   channel: "stable",
   checkedAt: "2026-07-13T12:00:00.000Z",
   available: true,
   compatible: true,
+  compatibilityIssue: null,
   release: {
     version: "0.2.0",
     schemaVersion: 10,
@@ -45,9 +47,16 @@ describe("update settings", () => {
   });
 
   it("makes incompatible releases explicit and disables the action", () => {
-    const html = renderSettings({ ...availableStatus, compatible: false });
+    const html = renderSettings({
+      ...availableStatus,
+      compatible: false,
+      compatibilityIssue: {
+        code: "schema-downgrade",
+        message: "This installation already uses a newer schema."
+      }
+    });
     expect(html).toContain("Direct update unavailable");
-    expect(html).toContain("cannot update directly");
+    expect(html).toContain("already uses a newer schema");
     expect(html).toContain('disabled=""');
   });
 

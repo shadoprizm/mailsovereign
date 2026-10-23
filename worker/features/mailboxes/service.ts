@@ -21,8 +21,12 @@ import type {
 export async function createMailbox(db: D1Database, input: CreateMailboxInput): Promise<Mailbox> {
   const domainName = input.address.split("@")[1] ?? "";
   const domain = await findMailDomainByName(db, domainName);
-  if (!domain?.isEnabled) {
-    throw new AppError("DOMAIN_NOT_REGISTERED", "Add and enable the email domain first.", 400);
+  if (!domain?.isEnabled || domain.kind !== "managed") {
+    throw new AppError(
+      "DOMAIN_NOT_REGISTERED",
+      "Add and enable a managed email domain first.",
+      400
+    );
   }
 
   const existing = await findMailboxByAddress(db, input.address);
@@ -41,8 +45,12 @@ export async function createMailboxAddress(
   const mailbox = await findMailboxById(db, mailboxId);
   if (!mailbox) throw new AppError("MAILBOX_NOT_FOUND", "Mailbox not found.", 404);
   const domain = await findMailDomainByName(db, input.address.split("@")[1] ?? "");
-  if (!domain?.isEnabled) {
-    throw new AppError("DOMAIN_NOT_REGISTERED", "Add and enable the email domain first.", 400);
+  if (!domain?.isEnabled || domain.kind !== "managed") {
+    throw new AppError(
+      "DOMAIN_NOT_REGISTERED",
+      "Add and enable a managed email domain first.",
+      400
+    );
   }
   if (await findMailboxByAddress(db, input.address)) {
     throw new AppError("MAILBOX_ADDRESS_EXISTS", "This email address is already in use.", 409);

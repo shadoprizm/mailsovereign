@@ -25,6 +25,7 @@ export default defineConfig({
       },
       miniflare: {
         bindings: {
+          PROVIDER_CREDENTIAL_KEY: "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=",
           BETTER_AUTH_SECRET: "integration-auth-secret-A7x9Q2m4V8p6L1s3",
           SOVEREIGN_MAIL_INSTALLATION_ID: "installation_test",
           STRIPE_AI_PRO_PRICE_ID: "price_test_ai_pro",
@@ -49,6 +50,7 @@ export default defineConfig({
           include: [
             "@modelcontextprotocol/sdk > ajv",
             "@modelcontextprotocol/sdk > ajv-formats",
+            "postcss",
             "sanitize-html",
             "web-push"
           ],

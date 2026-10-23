@@ -1,3 +1,4 @@
+import { clearDraftRecovery } from "@/features/compose/draft-recovery";
 import { disableCurrentDeviceNotificationsBeforeSignOut } from "@/features/notifications/sign-out";
 import { apiGet, apiPatch, apiPost } from "@/lib/api-client";
 import type { CurrentUser } from "./types";
@@ -35,6 +36,7 @@ export async function signIn(email: string, password: string): Promise<string | 
 }
 
 export async function signOut(): Promise<void> {
+  clearDraftRecovery();
   await disableCurrentDeviceNotificationsBeforeSignOut().catch(() => {
     // Signing out remains available if browser notification cleanup is unavailable.
   });

@@ -20,6 +20,11 @@ export type MessageSummary = {
 
 export type ConversationSummary = MessageSummary & {
   isStarred: boolean;
+  labels?: Array<{
+    id: string;
+    name: string;
+    color: "slate" | "blue" | "violet" | "green" | "amber" | "red";
+  }>;
   messageCount: number;
   unreadCount: number;
 };

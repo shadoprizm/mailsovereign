@@ -2,14 +2,20 @@ import { z } from "zod";
 
 import { newId, nowIso } from "../db/client";
 
-import type { ProviderCredentials } from "./credentials";
-import { sealCredentials } from "./credentials";
+import { ProviderCredentials, sealCredentials } from "./credentials";
 import { ProviderError } from "./errors";
 import type { ProviderId } from "./types";
 import { providerId as parseProviderId } from "./types";
 
 const hostSchema = z.string().min(1).max(255).regex(/^\S+$/);
 const portSchema = z.number().int().min(1).max(65535);
+export const providerImportSinceSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((value) => {
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+  });
 
 export const imapSmtpConfigSchema = z
   .object({
@@ -17,7 +23,8 @@ export const imapSmtpConfigSchema = z
     imapPort: portSchema,
     smtpHost: hostSchema,
     smtpPort: portSchema,
-    tls: z.literal("required")
+    tls: z.literal("required"),
+    importSince: providerImportSinceSchema.nullable().optional()
   })
   .strict();
 
@@ -188,6 +195,67 @@ export async function deleteImapSmtpConnection(db: D1Database, owner: ProviderId
     .prepare("DELETE FROM provider_connections WHERE provider_id = ? AND kind = 'imap-smtp'")
     .bind(owner)
     .run();
+}
+
+export async function updateImapSmtpImportSince(
+  db: D1Database,
+  owner: ProviderId,
+  importSince: string | null
+): Promise<ImapSmtpConnectionRecord> {
+  const connection = await getImapSmtpConnection(db, owner);
+  const config = parseConfig({ ...connection.config, importSince }, owner);
+  const timestamp = nowIso();
+  await db.batch([
+    db
+      .prepare(
+        `UPDATE provider_connections SET config_json = ?, last_synced_at = NULL, updated_at = ?
+         WHERE provider_id = ? AND kind = 'imap-smtp'`
+      )
+      .bind(JSON.stringify(config), timestamp, owner),
+    db.prepare("DELETE FROM provider_sync_state WHERE provider_id = ?").bind(owner),
+    db.prepare("DELETE FROM provider_sync_quarantine WHERE connection_id = ?").bind(connection.id)
+  ]);
+  return { ...connection, config, lastSyncedAt: null, updatedAt: timestamp };
+}
+
+export async function updateImapSmtpCredentials(
+  db: D1Database,
+  key: CryptoKey,
+  owner: ProviderId,
+  password: string
+): Promise<ImapSmtpConnectionRecord> {
+  const connection = await getImapSmtpConnection(db, owner);
+  if (!connection.mailboxAddress) {
+    throw new ProviderError("PROVIDER_CONNECTION_INVALID", owner);
+  }
+  const normalizedPassword =
+    connection.config.imapHost.toLowerCase() === "imap.gmail.com" &&
+    connection.config.smtpHost.toLowerCase() === "smtp.gmail.com"
+      ? password.replaceAll(/\s/g, "")
+      : password;
+  if (!normalizedPassword) throw new ProviderError("PROVIDER_CONNECTION_INVALID", owner);
+  const ciphertext = await sealCredentials(
+    key,
+    new ProviderCredentials(connection.mailboxAddress, normalizedPassword),
+    credentialBinding(owner, connection.id)
+  );
+  const timestamp = nowIso();
+  await db
+    .prepare(
+      `UPDATE provider_connections
+       SET credential_ciphertext = ?, credential_key_version = ?, verified_at = NULL,
+           last_error_code = NULL, updated_at = ?
+       WHERE id = ? AND provider_id = ? AND kind = 'imap-smtp'`
+    )
+    .bind(ciphertext, credentialKeyVersion, timestamp, connection.id, owner)
+    .run();
+  return {
+    ...connection,
+    credentialKeyVersion,
+    verifiedAt: null,
+    lastErrorCode: null,
+    updatedAt: timestamp
+  };
 }
 
 export async function markImapSmtpConnectionVerified(

@@ -5,4 +5,5 @@ export type InboundEmailEvent = {
   readonly envelopeRecipient: string;
   readonly raw: ArrayBuffer;
   readonly providerMessageKey?: string;
+  readonly sourceProviderConnectionId?: string;
 };

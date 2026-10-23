@@ -2,9 +2,36 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import * as React from "react";
 
+import { useBackDismiss } from "@/hooks/use-back-dismiss";
 import { cn } from "@/lib/cn";
 
-export const Sheet = DialogPrimitive.Root;
+export function Sheet({
+  open: controlledOpen,
+  defaultOpen = false,
+  onOpenChange,
+  dismissOnBack = true,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Root> & {
+  dismissOnBack?: boolean;
+}): React.ReactElement {
+  const [localOpen, setLocalOpen] = React.useState(defaultOpen);
+  const open = controlledOpen ?? localOpen;
+  const change = (next: boolean): void => {
+    if (controlledOpen === undefined) setLocalOpen(next);
+    onOpenChange?.(next);
+  };
+  const close = useBackDismiss(open && dismissOnBack, () => change(false));
+  return (
+    <DialogPrimitive.Root
+      {...props}
+      open={open}
+      onOpenChange={(next) => {
+        if (next) change(true);
+        else close();
+      }}
+    />
+  );
+}
 export const SheetTrigger = DialogPrimitive.Trigger;
 export const SheetClose = DialogPrimitive.Close;
 export const SheetPortal = DialogPrimitive.Portal;
@@ -35,6 +62,7 @@ export const SheetContent = React.forwardRef<
           : "right-0 border-l max-md:pb-[max(1.25rem,env(safe-area-inset-bottom))] max-md:pt-[max(1.25rem,env(safe-area-inset-top))] data-[state=closed]:animate-sheet-out-right data-[state=open]:animate-sheet-in-right",
         className
       )}
+      data-mobile-sheet=""
       ref={ref}
       {...props}
     >

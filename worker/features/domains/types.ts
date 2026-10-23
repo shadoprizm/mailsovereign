@@ -1,9 +1,11 @@
 export type DomainStatus = "pending" | "ready" | "degraded" | "disabled";
 export type CatchAllPolicy = "reject" | "mailbox" | "unassigned";
+export type MailDomainKind = "managed" | "external";
 
 export type MailDomain = {
   id: string;
   name: string;
+  kind: MailDomainKind;
   zoneId: string | null;
   accountId: string | null;
   receivingStatus: DomainStatus;
@@ -22,6 +24,7 @@ export type MailDomain = {
 export type MailDomainRow = {
   id: string;
   name: string;
+  kind: MailDomainKind;
   zone_id: string | null;
   account_id: string | null;
   receiving_status: DomainStatus;

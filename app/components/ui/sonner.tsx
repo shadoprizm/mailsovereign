@@ -18,7 +18,17 @@ export function Toaster(props: ToasterProps) {
   return (
     <>
       <ToastSounds />
-      <Sonner closeButton richColors theme={theme} {...props} />
+      <Sonner
+        closeButton
+        richColors
+        theme={theme}
+        mobileOffset={{
+          bottom: "calc(env(safe-area-inset-bottom) + 4.5rem)",
+          left: "16px",
+          right: "16px"
+        }}
+        {...props}
+      />
     </>
   );
 }

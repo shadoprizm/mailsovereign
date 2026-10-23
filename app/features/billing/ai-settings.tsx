@@ -3,6 +3,7 @@ import * as React from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AiProviderSettings } from "@/features/ai/provider-settings";
 import { WritingProfileSettings } from "@/features/ai/writing-profile-settings";
 import { SettingsSection } from "@/features/settings/settings-section";
 
@@ -10,6 +11,7 @@ import { beginAiCheckout, getAiBillingSummary, openAiBillingPortal } from "./api
 import type { AiBillingSummary, AiPlanId, AiSubscriptionStatus } from "./types";
 
 export function AiSettings({ isOwner }: { isOwner: boolean }): React.ReactElement {
+  const [ownProvider, setOwnProvider] = React.useState(false);
   const [summary, setSummary] = React.useState<AiBillingSummary | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [action, setAction] = React.useState<AiPlanId | "portal" | null>(null);
@@ -44,17 +46,10 @@ export function AiSettings({ isOwner }: { isOwner: boolean }): React.ReactElemen
 
   return (
     <SettingsSection
-      description="Built-in model access for writing, revising, summaries, and task extraction"
+      description="Your own provider or built-in model access for writing, revising, summaries, task extraction, and inbox organization"
       title="Sovereign AI"
     >
-      <Alert>
-        <AlertTitle>Software capability, not a managed service</AlertTitle>
-        <AlertDescription>
-          An AI plan unlocks automated model features and usage credits. It does not include
-          installation, workspace management, priority support, an SLA, or on-call service.
-          Cancelling never disables Sovereign Mail or your customer-owned data.
-        </AlertDescription>
-      </Alert>
+      <AiProviderSettings isOwner={isOwner} onConfigured={setOwnProvider} />
 
       <p className="text-sm text-muted-foreground">
         Mail is sent to the selected model only when you choose an AI action. Prompts and responses
@@ -69,7 +64,17 @@ export function AiSettings({ isOwner }: { isOwner: boolean }): React.ReactElemen
       ) : null}
 
       {summary ? (
-        <>
+        <details open={ownProvider ? undefined : true}>
+          <summary className="cursor-pointer text-sm font-medium">
+            Built-in AI plans and billing
+          </summary>
+          <Alert className="my-4">
+            <AlertTitle>Optional built-in model access</AlertTitle>
+            <AlertDescription>
+              These plans apply only to built-in models. Your own API key works without a plan.
+              Existing subscriptions remain active until canceled through Manage billing.
+            </AlertDescription>
+          </Alert>
           <div className="rounded-lg border bg-card p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -116,7 +121,10 @@ export function AiSettings({ isOwner }: { isOwner: boolean }): React.ReactElemen
                 </div>
                 <ul className="mt-4 grid gap-2 text-sm text-muted-foreground">
                   <li>{plan.monthlyCredits.toLocaleString()} AI credits each billing period</li>
-                  <li>New messages, replies, forwards, summaries, and task extraction</li>
+                  <li>
+                    New messages, replies, forwards, summaries, task extraction, and inbox
+                    organization
+                  </li>
                   <li>
                     {plan.models.includes("quality")
                       ? "Fast and quality models"
@@ -142,7 +150,7 @@ export function AiSettings({ isOwner }: { isOwner: boolean }): React.ReactElemen
               workspace credit balance for mailboxes they can access.
             </p>
           ) : null}
-        </>
+        </details>
       ) : null}
     </SettingsSection>
   );

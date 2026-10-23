@@ -40,7 +40,6 @@ export type ImapFailureReason =
 
 export type ImapFailureDiagnostic =
   | "raw_identity_mismatch"
-  | "raw_length_mismatch"
   | "raw_literal_missing"
   | "raw_size_invalid"
   | "raw_size_missing"
@@ -66,7 +65,7 @@ export type ImapClient = {
   folderStatus(path: string): Promise<ImapFolderStatus>;
   listUids(
     path: string,
-    options: { fromUid: number; toUid: number; maxEntries: number }
+    options: { fromUid: number; toUid: number; maxEntries: number; since?: string }
   ): Promise<readonly ImapListingEntry[]>;
   fetchRaw(path: string, uid: number, options: { maxBytes: number }): Promise<ArrayBuffer>;
   close(): Promise<void>;

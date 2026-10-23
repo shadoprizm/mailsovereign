@@ -6,5 +6,12 @@
   },
   "releaseManifestUrl": "https://github.com/shadoprizm/mailsovereign/releases/latest/download/stable.json",
   "releasePublicKey": "MCowBQYDK2VwAyEAKU60wrkOp4IjXvkJQuv/GZnN8+utV4YWvUnfNJVorxA=",
-  "releaseUpdatesEnabled": true
+  "releaseUpdatesEnabled": true,
+  "workersBuilds": {
+    "provider": "github",
+    "account": "shadoprizm",
+    "repository": "mailsovereign",
+    "branch": "main",
+    "deployCommand": "pnpm sovereign-mail builds-update"
+  }
 }

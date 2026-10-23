@@ -31,6 +31,8 @@ export async function insertMessage(
 ): Promise<MessageSummary> {
   const id = newId("msg");
   const timestamp = nowIso();
+  const sourceColumn = input.sourceProviderConnectionId ? ", source_provider_connection_id" : "";
+  const sourcePlaceholder = input.sourceProviderConnectionId ? ", ?" : "";
 
   await db
     .prepare(
@@ -38,8 +40,8 @@ export async function insertMessage(
         id, thread_id, mailbox_id, direction, folder, from_address, to_json, cc_json, bcc_json,
         subject, snippet, text_body, html_r2_key, raw_r2_key, message_id, dedupe_key,
         in_reply_to, references_json, received_at, sent_at, read_at, has_attachments,
-        created_at, updated_at, delivered_to_address_id, sent_from_address_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        created_at, updated_at, delivered_to_address_id, sent_from_address_id${sourceColumn}
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${sourcePlaceholder})`
     )
     .bind(
       id,
@@ -67,7 +69,8 @@ export async function insertMessage(
       timestamp,
       timestamp,
       input.deliveredToAddressId ?? null,
-      input.sentFromAddressId ?? null
+      input.sentFromAddressId ?? null,
+      ...(input.sourceProviderConnectionId ? [input.sourceProviderConnectionId] : [])
     )
     .run();
 

@@ -1,6 +1,7 @@
 import { handleInboundEmail } from "./email/inbound";
 import { handleMcpRoute } from "./features/mcp/route";
 import { notifyInboundMessage } from "./features/notifications/delivery";
+import { listResumableProviderPurgeIds } from "./features/provider-connections/purge";
 import { consumeJobs } from "./jobs/consumer";
 import type { WorkerEnv } from "./lib/env";
 import { requireCapability } from "./providers/capabilities";
@@ -67,6 +68,15 @@ export default {
           requestedAt
         });
       }
+      const purgeIds = await listResumableProviderPurgeIds(env.DB);
+      for (const purgeId of purgeIds) {
+        await env.SOVEREIGN_MAIL_JOBS.send({
+          id: `provider-purge:${purgeId}:${requestedAt.slice(0, 16)}`,
+          kind: "provider-purge",
+          purgeId,
+          requestedAt
+        });
+      }
       return;
     }
     await env.SOVEREIGN_MAIL_JOBS.send({
@@ -105,9 +115,12 @@ const securityPolicy = [
   "base-uri 'self'",
   "connect-src 'self'",
   "font-src 'self'",
+  "frame-src 'self' blob:",
   "form-action 'self'",
   "frame-ancestors 'none'",
-  "img-src 'self' data: blob:",
+  // `srcdoc` message readers inherit this policy and then apply their own stricter image policy.
+  // Remote URLs are removed from sanitized mail until the reader explicitly enables them.
+  "img-src 'self' data: blob: https: http:",
   "manifest-src 'self'",
   "object-src 'none'",
   "script-src 'self'",

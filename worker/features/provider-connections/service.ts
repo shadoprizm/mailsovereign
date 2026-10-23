@@ -1,8 +1,7 @@
 import { AppError } from "../../lib/errors";
 import type { ImapSmtpConnectionRecord } from "../../providers/connections";
-import { findMailDomainByName, upsertMailDomain } from "../domains/queries";
-import { findMailboxByAddress } from "../mailboxes/queries";
-import { createMailbox } from "../mailboxes/service";
+import { upsertMailDomain } from "../domains/queries";
+import { findMailboxByAddress, insertMailbox } from "../mailboxes/queries";
 import type { Mailbox } from "../mailboxes/types";
 
 export async function ensureProviderMailbox(
@@ -26,21 +25,20 @@ export async function ensureProviderMailbox(
     throw new AppError("PROVIDER_CONNECTION_INVALID", "The mailbox address is invalid.", 400);
   }
 
-  const existingDomain = await findMailDomainByName(db, domainName);
-  if (!existingDomain) {
-    await upsertMailDomain(db, {
-      name: domainName,
-      receivingStatus: "ready",
-      sendingStatus: "ready",
-      dnsStatus: "ready"
-    });
-  }
+  const domain = await upsertMailDomain(db, {
+    name: domainName,
+    kind: "external",
+    receivingStatus: "ready",
+    sendingStatus: "ready",
+    dnsStatus: "ready"
+  });
 
   const localPart = address.split("@")[0] ?? address;
-  return createMailbox(db, {
-    address,
-    displayName: displayNameFromLocalPart(localPart)
-  });
+  return insertMailbox(
+    db,
+    { address, displayName: displayNameFromLocalPart(localPart) },
+    domain.id
+  );
 }
 
 function displayNameFromLocalPart(localPart: string): string {

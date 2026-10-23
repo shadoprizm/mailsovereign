@@ -1,0 +1,31 @@
+import type { Mailbox } from "@/features/mailboxes/types";
+import type { ConversationFilters } from "@/features/messages/conversation-filters";
+import type { ConversationAction, ConversationSummary } from "@/features/messages/types";
+import type { MailLabel } from "@/features/organization/types";
+import type { MailFolderId } from "@/lib/routes";
+
+export type InboxPageProps = {
+  activeFolder: MailFolderId;
+  conversations: ConversationSummary[];
+  filters?: ConversationFilters;
+  mailboxId?: string;
+  search?: string;
+  defaultFromMailboxId: string | null;
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  loadMoreError: string | null;
+  mailboxes: Mailbox[];
+  labels?: MailLabel[];
+  activeLabelId?: string | null;
+  selectedId: string | null;
+  onDraftsChange?: () => void;
+  onConversationAction: (threadId: string, action: ConversationAction, affected: number) => void;
+  onFiltersChange?: (filters: ConversationFilters) => void;
+  onLoadMore: () => void;
+  onLabelChange?: (labelId: string | null) => void;
+  onLabelsChanged?: () => Promise<void>;
+  onRefresh: (resetPages?: boolean) => Promise<void> | void;
+  onMessageRouteChange: (folder: MailFolderId, messageId: string | null) => void;
+  onSelect: (messageId: string) => void;
+  totalCount: number | null;
+};

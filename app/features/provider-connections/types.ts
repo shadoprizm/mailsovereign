@@ -4,6 +4,15 @@ export type ProviderConnectionConfig = {
   smtpHost: string;
   smtpPort: number;
   tls: "required";
+  importSince?: string | null;
+};
+
+export type ProviderSyncProgress = {
+  phase: "not_started" | "backfilling" | "current";
+  importedMessages: number;
+  quarantinedMessages: number;
+  estimatedPercent: number;
+  estimatedRemainingUidPositions: number;
 };
 
 export type ProviderConnection = {
@@ -20,6 +29,7 @@ export type ProviderConnection = {
   lastErrorCode: string | null;
   createdAt: string;
   updatedAt: string;
+  syncProgress: ProviderSyncProgress;
 };
 
 export type CreateProviderConnectionInput = {
@@ -40,4 +50,18 @@ export type ProviderConnectionVerification = {
 
 export type ProviderSyncRequest = {
   id: string;
+};
+
+export type ProviderImportPurge = {
+  id: string;
+  sourceConnectionId: string;
+  mailboxAddress: string;
+  status: "pending" | "running" | "failed" | "completed";
+  totalMessages: number;
+  deletedMessages: number;
+  pendingObjects: number;
+  lastErrorCode: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
 };

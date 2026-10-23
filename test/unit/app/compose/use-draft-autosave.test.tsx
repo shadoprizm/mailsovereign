@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { draftRecoveryKey } from "@/features/compose/compose-state";
 import { useDraftAutosave } from "@/features/compose/use-draft-autosave";
 import type { Draft } from "@/features/drafts/types";
 import { flushHookEffects, renderHook } from "../render-hook";
@@ -72,6 +73,7 @@ describe("useDraftAutosave", () => {
     const nextDraft = { ...draft, subject: "Changed", version: 2 };
     mocks.updateDraft.mockResolvedValue(nextDraft);
     const initial = options();
+    localStorage.setItem(draftRecoveryKey(draft.id), "synthetic legacy recovery");
     const hook = await renderHook(useDraftAutosave, initial);
     hook.result.initializeAutosave(draft);
     const changed = options({
@@ -97,6 +99,7 @@ describe("useDraftAutosave", () => {
     expect(changed.setDraft).toHaveBeenCalledWith(nextDraft);
     expect(changed.setSaveState).toHaveBeenLastCalledWith("saved");
     expect(localStorage.getItem(initial.recoveryKey as string)).toBeNull();
+    expect(localStorage.getItem(draftRecoveryKey(draft.id))).toBeNull();
 
     await hook.unmount();
     vi.useRealTimers();
@@ -146,6 +149,45 @@ describe("useDraftAutosave", () => {
     );
     expect(typing.setSaveState).toHaveBeenLastCalledWith("saved");
 
+    await hook.unmount();
+    vi.useRealTimers();
+  });
+  it("keeps device recovery after a failed save and retries when the connection returns", async () => {
+    vi.useFakeTimers();
+    const initial = options();
+    const hook = await renderHook(useDraftAutosave, initial);
+    hook.result.initializeAutosave(draft);
+    mocks.updateDraft.mockRejectedValueOnce(new Error("temporary outage"));
+    await hook.rerender({ ...initial, open: true, subject: "Offline edit" });
+    await flushHookEffects(() => vi.advanceTimersByTime(800));
+    expect(initial.setSaveState).toHaveBeenLastCalledWith("local");
+    expect(localStorage.getItem(initial.recoveryKey as string)).toContain("Offline edit");
+    mocks.updateDraft.mockResolvedValue({ ...draft, subject: "Offline edit", version: 2 });
+    await flushHookEffects(() => window.dispatchEvent(new Event("online")));
+    await flushHookEffects(() => vi.advanceTimersByTime(800));
+    expect(initial.setSaveState).toHaveBeenLastCalledWith("saved");
+    expect(localStorage.getItem(initial.recoveryKey as string)).toBeNull();
+    await hook.unmount();
+    vi.useRealTimers();
+  });
+
+  it("does not erase newer recovery when an earlier server save finishes", async () => {
+    vi.useFakeTimers();
+    let finish: (value: Draft) => void = () => undefined;
+    mocks.updateDraft.mockReturnValue(
+      new Promise<Draft>((resolve) => {
+        finish = resolve;
+      })
+    );
+    const initial = options();
+    const hook = await renderHook(useDraftAutosave, initial);
+    hook.result.initializeAutosave(draft);
+    await hook.rerender({ ...initial, open: true, subject: "First edit" });
+    await flushHookEffects(() => vi.advanceTimersByTime(800));
+    await hook.rerender({ ...initial, open: true, subject: "Newer edit" });
+    await flushHookEffects(() => finish({ ...draft, subject: "First edit", version: 2 }));
+    expect(localStorage.getItem(initial.recoveryKey as string)).toContain("Newer edit");
+    expect(initial.setSaveState).toHaveBeenLastCalledWith("saving");
     await hook.unmount();
     vi.useRealTimers();
   });

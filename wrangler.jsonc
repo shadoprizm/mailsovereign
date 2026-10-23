@@ -4,7 +4,8 @@
   "main": "worker/index.ts",
   "preview_urls": false,
   "compatibility_date": "2026-07-28",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "limits": { "cpu_ms": 300000 },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
@@ -50,7 +51,7 @@
       {
         "queue": "sovereign-mail-jobs",
         "dead_letter_queue": "sovereign-mail-jobs-dlq",
-        "max_batch_size": 10,
+        "max_batch_size": 1,
         "max_batch_timeout": 5,
         "max_retries": 3
       }

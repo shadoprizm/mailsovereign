@@ -27,6 +27,21 @@ describe("provider connection API validation", () => {
     });
   });
 
+  it("accepts an inclusive history cutoff and rejects impossible dates", () => {
+    expect(
+      createProviderConnectionSchema.parse({
+        ...valid,
+        config: { ...valid.config, importSince: "2026-08-01" }
+      }).config.importSince
+    ).toBe("2026-08-01");
+    expect(() =>
+      createProviderConnectionSchema.parse({
+        ...valid,
+        config: { ...valid.config, importSince: "2026-02-31" }
+      })
+    ).toThrow();
+  });
+
   it("rejects credential smuggling, unknown fields, and unbounded passwords", () => {
     expect(() =>
       createProviderConnectionSchema.parse({

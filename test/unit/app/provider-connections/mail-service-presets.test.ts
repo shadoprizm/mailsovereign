@@ -5,7 +5,8 @@ import {
   connectionIdSuggestion,
   detectMailService,
   getMailServicePreset,
-  isMailServiceId
+  isMailServiceId,
+  normalizeMailboxPassword
 } from "@/features/provider-connections/mail-service-presets";
 
 describe("mail service presets", () => {
@@ -64,5 +65,10 @@ describe("mail service presets", () => {
     );
     expect(isMailServiceId("namecheap-private-email")).toBe(true);
     expect(isMailServiceId("microsoft-365")).toBe(false);
+  });
+
+  it("removes display whitespace from Google app passwords only", () => {
+    expect(normalizeMailboxPassword("google", "abcd efgh ijkl mnop")).toBe("abcdefghijklmnop");
+    expect(normalizeMailboxPassword("custom", " keep spaces ")).toBe(" keep spaces ");
   });
 });

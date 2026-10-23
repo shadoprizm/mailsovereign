@@ -265,6 +265,35 @@ describe("Sovereign Mail release deployment", () => {
     );
     expect(() => workerNameFromConfig({ name: "" })).toThrow("deployed Worker name");
   });
+  it("uses an explicit deployment config for both inspection and deploy variables", () => {
+    const configFile = resolve("/customer/deployments/production/wrangler.jsonc");
+    const attempts = [];
+    const runs = [];
+    deploySource("/customer/repo", {
+      configFile,
+      workersCi: true,
+      workerName: "sovereign-mail-production",
+      vars: { SOVEREIGN_MAIL_APP_VERSION: "1.2.1" },
+      attempt: (_command, args) => {
+        attempts.push(args);
+        return {
+          status: 0,
+          stdout: JSON.stringify(requiredWorkerSecrets.map((name) => ({ name }))),
+          stderr: ""
+        };
+      },
+      run: (_command, args) => runs.push(args)
+    });
+
+    expect(attempts).toEqual([
+      ["exec", "wrangler", "secret", "list", "--format", "json", "--config", configFile]
+    ]);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toContain("--config");
+    expect(runs[0]).toContain(configFile);
+    expect(runs[0]).toContain("SOVEREIGN_MAIL_WORKER_NAME:sovereign-mail-production");
+    expect(runs[0]).toContain("SOVEREIGN_MAIL_APP_VERSION:1.2.1");
+  });
   it("replaces undeclared legacy variables on both installs and updates", () => {
     expect(readFileSync("scripts/release/worker-deploy.mjs", "utf8")).not.toContain(
       '"--keep-vars"'
@@ -448,6 +477,16 @@ describe("Sovereign Mail release deployment", () => {
       })
     ).toThrow("wrangler d1 execute exited with status 1");
     expect(emitted).toBe("D1 update failed");
+  });
+  it("uses the explicit deployment config for release bookkeeping", () => {
+    const configFile = resolve("/customer/deployments/production/wrangler.jsonc");
+    executeSql("/release", "SELECT 1", {
+      configFile,
+      attempt: (_command, args) => {
+        expect(args.slice(-2)).toEqual(["--config", configFile]);
+        return { status: 0, stdout: "", stderr: "" };
+      }
+    });
   });
   it("keeps the generated secret out of Deploy to Cloudflare form metadata", () => {
     const packageJson = JSON.parse(readFileSync("package.json", "utf8"));

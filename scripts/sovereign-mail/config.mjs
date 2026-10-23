@@ -1,6 +1,7 @@
 import fs from "node:fs";
 
 import { configPath } from "./manifest.mjs";
+import { nativeMailConfig } from "./native-mail-config.mjs";
 import { rootDir } from "./paths.mjs";
 
 const rootFromDeployment = "../../..";
@@ -27,7 +28,8 @@ export function createWranglerConfig(manifest) {
     name: manifest.worker.name,
     main: `${rootFromDeployment}/worker/index.ts`,
     compatibility_date: "2026-07-28",
-    compatibility_flags: ["nodejs_compat"],
+    compatibility_flags: ["nodejs_compat", "global_fetch_strictly_public"],
+    limits: { cpu_ms: 300_000 },
     assets: {
       directory: `${rootFromDeployment}/dist`,
       binding: "ASSETS",
@@ -72,7 +74,7 @@ export function createWranglerConfig(manifest) {
         {
           queue: manifest.queue.name,
           dead_letter_queue: manifest.queue.deadLetterName,
-          max_batch_size: 10,
+          max_batch_size: 1,
           max_batch_timeout: 5,
           max_retries: 3
         }
@@ -86,11 +88,22 @@ export function createWranglerConfig(manifest) {
     ]
   };
 
+  const nativeMail = manifest.nativeMail?.host
+    ? nativeMailConfig(manifest.nativeMail.host, manifest.nativeMail)
+    : undefined;
   config.vars = {
     CLOUDFLARE_OAUTH_MODE: cloudflareOAuth.mode,
     SOVEREIGN_MAIL_APP_VERSION: appVersion,
     SOVEREIGN_MAIL_WORKER_NAME: manifest.worker.name,
     CLOUDFLARE_OAUTH_CLIENT_ID: cloudflareOAuth.clientId,
+    ...(nativeMail
+      ? {
+          SOVEREIGN_MAIL_NATIVE_MAIL_HOST: nativeMail.host,
+          SOVEREIGN_MAIL_NATIVE_SMTP_HOST: nativeMail.smtpHost ?? nativeMail.host,
+          SOVEREIGN_MAIL_NATIVE_IMAP_PORT: String(nativeMail.imapPort),
+          SOVEREIGN_MAIL_NATIVE_SMTP_PORT: String(nativeMail.smtpPort)
+        }
+      : {}),
     ...(manifest.authUrl ? { BETTER_AUTH_URL: manifest.authUrl } : {})
   };
   const customDomains = [manifest.appDomain].filter(Boolean);

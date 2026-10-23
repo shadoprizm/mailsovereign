@@ -32,12 +32,19 @@ export async function createImapClientForConnection(
   env: WorkerEnv,
   providerId: ImapSmtpConnectionRecord["providerId"],
   clientFactory: ImapClientFactory
-): Promise<{ client: ImapClient; envelopeRecipient: string }> {
+): Promise<{
+  client: ImapClient;
+  connectionId: string;
+  envelopeRecipient: string;
+  importSince: string | null;
+}> {
   const record = await getImapSmtpConnection(db, providerId);
   const credentials = await loadCredentials(db, env, record);
   return {
     client: clientFactory(record.config, credentials),
-    envelopeRecipient: credentials.username()
+    connectionId: record.id,
+    envelopeRecipient: credentials.username(),
+    importSince: record.config.importSince ?? null
   };
 }
 

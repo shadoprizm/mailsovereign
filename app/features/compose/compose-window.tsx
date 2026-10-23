@@ -1,7 +1,7 @@
 import { ChevronUp, Maximize2, Minimize2, Minus, X } from "lucide-react";
 import * as React from "react";
-
 import { Button } from "@/components/ui/button";
+import { useComposeFocus } from "@/hooks/use-compose-focus";
 import { cn } from "@/lib/cn";
 
 type ComposeWindowProps = {
@@ -22,6 +22,7 @@ export function ComposeWindow({
   const [expanded, setExpanded] = React.useState(false);
   const [minimized, setMinimized] = React.useState(false);
   const windowRef = React.useRef<HTMLElement>(null);
+  const compact = useComposeFocus(windowRef, open);
   const previousFocusRef = React.useRef<HTMLElement | null>(null);
   const titleId = React.useId();
   const statusId = React.useId();
@@ -50,9 +51,10 @@ export function ComposeWindow({
 
   return (
     <section
+      data-compose-surface=""
       aria-describedby={statusId}
       aria-labelledby={titleId}
-      aria-modal="false"
+      aria-modal={compact}
       className={cn(
         "fixed inset-0 z-50 flex h-[100dvh] w-full flex-col overflow-hidden bg-card pt-[env(safe-area-inset-top)] shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring md:inset-auto md:bottom-0 md:right-4 md:z-40 md:h-[min(42rem,calc(100vh-5rem))] md:w-[min(42rem,calc(100vw-2rem))] md:rounded-t-lg md:border md:pt-0",
         expanded &&

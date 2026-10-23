@@ -9,6 +9,7 @@ import type { StoredFolderCursor } from "./cursors";
 import { loadFolderCursor, saveFolderCursor } from "./cursors";
 import { createImapClientForConnection } from "./factory";
 import { type ImapClient, ImapClientError } from "./ports";
+import { type ProviderQuarantineReason, recordProviderSyncQuarantine } from "./quarantine";
 import { planFolderSync, reconcileFolderListing } from "./sync-plan";
 
 export type ImapSyncLimits = {
@@ -23,7 +24,9 @@ export type ImapSyncResult = {
   readonly fetched: number;
   readonly inserted: number;
   readonly duplicates: number;
+  readonly quarantined: number;
   readonly hasMore: boolean;
+  readonly forwardHasMore: boolean;
 };
 
 export type ImapCursorStore = {
@@ -40,6 +43,13 @@ export type ImapMessageSink = (input: {
   raw: ArrayBuffer;
 }) => Promise<{ inserted: boolean }>;
 
+export type ImapQuarantineSink = (input: {
+  folderPath: string;
+  uidValidity: number;
+  uid: number;
+  reason: ProviderQuarantineReason;
+}) => Promise<void>;
+
 const defaultLimits: ImapSyncLimits = {
   maxFolders: 64,
   batchSize: 25,
@@ -53,6 +63,8 @@ export async function executeImapInboxSync(input: {
   client: ImapClient;
   cursors: ImapCursorStore;
   store: ImapMessageSink;
+  importSince?: string | null;
+  quarantine?: ImapQuarantineSink;
   now?: () => string;
   limits?: ImapSyncLimits;
 }): Promise<ImapSyncResult> {
@@ -86,6 +98,7 @@ export async function executeImapInboxSync(input: {
       stored?.uidValidity === status.uidValidity ? stored.backfillBeforeUid : null;
     let range: { fromUid: number; toUid: number } | null = null;
     let hasMore = false;
+    let forwardHasMore = false;
 
     if (plan.kind === "initial" || plan.kind === "reset") {
       range = { fromUid: plan.fetchFromUid, toUid: plan.fetchToUid };
@@ -93,7 +106,8 @@ export async function executeImapInboxSync(input: {
       hasMore = backfillBeforeUid !== null;
     } else if (plan.kind === "incremental") {
       range = { fromUid: plan.fetchFromUid, toUid: plan.fetchToUid };
-      hasMore = plan.hasMore || backfillBeforeUid !== null;
+      forwardHasMore = plan.hasMore;
+      hasMore = forwardHasMore || backfillBeforeUid !== null;
     } else if (backfillBeforeUid !== null) {
       const fromUid = Math.max(1, backfillBeforeUid - limits.batchSize);
       range = { fromUid, toUid: backfillBeforeUid - 1 };
@@ -109,14 +123,14 @@ export async function executeImapInboxSync(input: {
           range,
           limits
         })
-      : { fetched: 0, inserted: 0, duplicates: 0 };
+      : { fetched: 0, inserted: 0, duplicates: 0, quarantined: 0 };
     await input.cursors.save(folder.path, {
       uidValidity: plan.nextCursor.uidValidity,
       lastSeenUid: plan.nextCursor.lastSeenUid,
       backfillBeforeUid,
       syncedAt: now()
     });
-    return { folders: 1, ...counts, hasMore };
+    return { folders: 1, ...counts, hasMore, forwardHasMore };
   } finally {
     await input.client.close().catch(() => undefined);
   }
@@ -126,25 +140,25 @@ export async function executeImapConnectionSync(
   env: WorkerEnv,
   providerId: ProviderId
 ): Promise<ImapSyncResult> {
-  const { client, envelopeRecipient } = await createImapClientForConnection(
-    env.DB,
-    env,
-    providerId,
-    createCloudflareImapClient
-  );
+  const { client, connectionId, envelopeRecipient, importSince } =
+    await createImapClientForConnection(env.DB, env, providerId, createCloudflareImapClient);
   return executeImapInboxSync({
     providerId,
     envelopeRecipient,
     client,
+    importSince,
     cursors: {
       load: (folderPath) => loadFolderCursor(env.DB, providerId, folderPath),
       save: (folderPath, cursor) => saveFolderCursor(env.DB, providerId, folderPath, cursor)
     },
+    quarantine: (quarantine) =>
+      recordProviderSyncQuarantine(env.DB, { connectionId, ...quarantine }),
     store: async ({ raw, folderPath, uidValidity, uid }) => {
       const stored = await handleInboundEmail(env, {
         providerId,
         envelopeRecipient,
         raw,
+        sourceProviderConnectionId: connectionId,
         providerMessageKey: imapProviderMessageKey({
           providerId,
           folderPath,
@@ -171,32 +185,53 @@ async function syncRange(input: {
   envelopeRecipient: string;
   client: ImapClient;
   store: ImapMessageSink;
+  importSince?: string | null;
+  quarantine?: ImapQuarantineSink;
   folderPath: string;
   uidValidity: number;
   range: { fromUid: number; toUid: number };
   limits: ImapSyncLimits;
-}): Promise<{ fetched: number; inserted: number; duplicates: number }> {
+}): Promise<{ fetched: number; inserted: number; duplicates: number; quarantined: number }> {
   const listing = await providerCall(
     input.providerId,
     "list-uids",
     input.client.listUids(input.folderPath, {
       fromUid: input.range.fromUid,
       toUid: input.range.toUid,
-      maxEntries: input.limits.batchSize
+      maxEntries: input.limits.batchSize,
+      ...(input.importSince ? { since: input.importSince } : {})
     })
   );
   const reconciliation = reconcileFolderListing({ known: [], listing });
   let inserted = 0;
   let duplicates = 0;
+  let quarantined = 0;
   for (const uid of reconciliation.untrackedUids) {
     if (uid < input.range.fromUid || uid > input.range.toUid) {
       throw new ProviderError("PROVIDER_MALFORMED_RESPONSE", input.providerId);
     }
-    const raw = await providerCall(
-      input.providerId,
-      "fetch-raw",
-      input.client.fetchRaw(input.folderPath, uid, { maxBytes: input.limits.maxMessageBytes })
-    );
+    let raw: ArrayBuffer;
+    try {
+      raw = await input.client.fetchRaw(input.folderPath, uid, {
+        maxBytes: input.limits.maxMessageBytes
+      });
+    } catch (error) {
+      if (
+        error instanceof ImapClientError &&
+        error.reason === "message_too_large" &&
+        input.quarantine
+      ) {
+        await input.quarantine({
+          folderPath: input.folderPath,
+          uidValidity: input.uidValidity,
+          uid,
+          reason: "message_too_large"
+        });
+        quarantined += 1;
+        continue;
+      }
+      raw = await providerCall(input.providerId, "fetch-raw", Promise.reject(error));
+    }
     const result = await input.store({
       providerId: input.providerId,
       envelopeRecipient: input.envelopeRecipient,
@@ -208,7 +243,7 @@ async function syncRange(input: {
     if (result.inserted) inserted += 1;
     else duplicates += 1;
   }
-  return { fetched: reconciliation.untrackedUids.length, inserted, duplicates };
+  return { fetched: reconciliation.untrackedUids.length, inserted, duplicates, quarantined };
 }
 
 async function providerCall<T>(

@@ -35,6 +35,7 @@ export function ComposeFields(props: {
   setSubject: (value: string) => void;
   setSignatureChoice: (value: SignatureChoice) => void;
 }) {
+  const [extraRecipients, setExtraRecipients] = React.useState(Boolean(props.cc || props.bcc));
   const recipientHintId = React.useId();
 
   return (
@@ -59,42 +60,45 @@ export function ComposeFields(props: {
         </Select>
       </Row>
       {props.signatures.length > 0 ? (
-        <Row label="Signature">
-          <Select
-            value={signatureChoiceValue(props.signatureChoice)}
-            onValueChange={(value) => props.setSignatureChoice(parseSignatureChoice(value))}
-          >
-            <SelectTrigger
-              aria-label="Signature"
-              className="h-10 rounded-none border-0 bg-transparent px-0 shadow-none focus:ring-0"
+        <details className="group border-b">
+          <summary className="cursor-pointer py-3 text-sm text-muted-foreground">Signature</summary>
+          <Row label="Signature">
+            <Select
+              value={signatureChoiceValue(props.signatureChoice)}
+              onValueChange={(value) => props.setSignatureChoice(parseSignatureChoice(value))}
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem value="default">
-                  Default for this address
-                  {props.defaultSignatureName ? ` — ${props.defaultSignatureName}` : " — none"}
-                </SelectItem>
-                <SelectItem value="none">No signature</SelectItem>
-                {props.signatureChoice.mode === "specific" &&
-                props.signatureChoice.signatureId &&
-                !props.signatures.some(
-                  (signature) => signature.id === props.signatureChoice.signatureId
-                ) ? (
-                  <SelectItem value={`signature:${props.signatureChoice.signatureId}`}>
-                    Saved draft signature
+              <SelectTrigger
+                aria-label="Signature"
+                className="h-10 rounded-none border-0 bg-transparent px-0 shadow-none focus:ring-0"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="default">
+                    Default for this address
+                    {props.defaultSignatureName ? ` — ${props.defaultSignatureName}` : " — none"}
                   </SelectItem>
-                ) : null}
-                {props.signatures.map((signature) => (
-                  <SelectItem key={signature.id} value={`signature:${signature.id}`}>
-                    {signature.name}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </Row>
+                  <SelectItem value="none">No signature</SelectItem>
+                  {props.signatureChoice.mode === "specific" &&
+                  props.signatureChoice.signatureId &&
+                  !props.signatures.some(
+                    (signature) => signature.id === props.signatureChoice.signatureId
+                  ) ? (
+                    <SelectItem value={`signature:${props.signatureChoice.signatureId}`}>
+                      Saved draft signature
+                    </SelectItem>
+                  ) : null}
+                  {props.signatures.map((signature) => (
+                    <SelectItem key={signature.id} value={`signature:${signature.id}`}>
+                      {signature.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Row>
+        </details>
       ) : null}
       <Row label="To" border={false}>
         <RecipientInput
@@ -113,7 +117,17 @@ export function ComposeFields(props: {
       <p className="border-b pb-2 pl-12 text-xs text-muted-foreground" id={recipientHintId}>
         Separate multiple addresses with commas.
       </p>
-      <div className="grid grid-cols-1 border-b sm:grid-cols-2 sm:divide-x">
+      <button
+        aria-expanded={extraRecipients}
+        className="min-h-11 border-b text-left text-sm text-muted-foreground md:hidden"
+        type="button"
+        onClick={() => setExtraRecipients((value) => !value)}
+      >
+        {extraRecipients ? "Hide Cc / Bcc" : "Add Cc / Bcc"}
+      </button>
+      <div
+        className={`${extraRecipients ? "grid" : "hidden md:grid"} grid-cols-1 border-b sm:grid-cols-2 sm:divide-x`}
+      >
         <Row label="Cc" border={false}>
           <RecipientInput
             aria-describedby={recipientHintId}
