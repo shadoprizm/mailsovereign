@@ -3,7 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 
 const migrations = readdirSync("migrations")
-  .filter((name) => name.endsWith(".sql"))
+  .filter((name) => name.endsWith(".sql") && name <= "0026_ai_provider_connection.sql")
   .sort();
 const apply = (db: DatabaseSync, files: string[]) => {
   for (const file of files) db.exec(readFileSync(`migrations/${file}`, "utf8"));
