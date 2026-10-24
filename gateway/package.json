@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "smtp-server": "3.19.17",
-    "nodemailer": "10.1.1",
+    "nodemailer": "10.1.4",
     "@zone-eu/wildduck": "1.52.0"
   },
   "devDependencies": {
