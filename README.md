@@ -23,6 +23,11 @@ repository. Sovereign Mail does not use HQBase OAuth, releases, signing keys, or
 
 ## Install on Cloudflare
 
+New to the terminal or Cloudflare? Start with the [beginner installation walkthrough](docs/FIRST_INSTALL.md).
+It includes [tool installation](docs/INSTALL_TOOLS.md) and a
+[field-by-field Cloudflare OAuth guide](docs/CLOUDFLARE_OAUTH_SETUP.md).
+
+
 An optional native IMAP/SMTP gateway is under development for Apple Mail and other native clients.
 It requires a customer-owned TCP server alongside Cloudflare. It is disabled by default and is
 not yet part of the signed stable release. See [native-client support](docs/NATIVE_MAIL_CLIENTS.md)

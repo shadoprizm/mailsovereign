@@ -1,5 +1,10 @@
 # Production installation
 
+New to self-hosting? Start with [First installation, step by step](FIRST_INSTALL.md).
+It links [computer and command-line preparation](INSTALL_TOOLS.md) and
+[Cloudflare OAuth registration](CLOUDFLARE_OAUTH_SETUP.md), with checkpoints and troubleshooting.
+
+
 Sovereign Mail installs into a Cloudflare account controlled by the operator. D1, R2, queues,
 Workers AI, Email Routing, and Email Sending remain in that account. Install a published stable
 release rather than an arbitrary commit from the default branch.
